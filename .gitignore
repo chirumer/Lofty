@@ -1,0 +1,11 @@
+node_modules/
+dist/
+
+.DS_Store
+*.tsbuildinfo
+
+vite.config.js
+vite.config.d.ts
+
+input/lofty_crm/session.har
+input/lofty_crm/cookies.json
