@@ -39,9 +39,13 @@ import {
   X
 } from "lucide-react";
 import {
+  buildAutoselectedCardStates,
+  buildAutoselectedConfigStore,
+  buildAutoselectedToggleStore,
   buildInitialCardStates,
   buildInitialConfigStore,
   buildInitialToggleStore,
+  buildLaunchedNavItems,
   buildPromptDefaults,
   dashboardUpdates,
   deriveLaunchReady,
@@ -117,6 +121,17 @@ function loadSnapshot(): OnboardingSnapshot {
   }
 }
 
+function createBuilderSnapshot(roleId: RoleId, mode: "empty" | "auto"): OnboardingSnapshot {
+  return normalizeSnapshot({
+    ...emptySnapshot,
+    selectedRole: roleId,
+    cardStates: mode === "auto" ? buildAutoselectedCardStates(roleId) : buildInitialCardStates(),
+    subfeatureToggles: mode === "auto" ? buildAutoselectedToggleStore(roleId) : buildInitialToggleStore(roleId),
+    subfeatureConfigs: mode === "auto" ? buildAutoselectedConfigStore(roleId) : buildInitialConfigStore(roleId),
+    phase: "builder"
+  });
+}
+
 function getCardReadiness(snapshot: OnboardingSnapshot, card: LibraryCardDefinition, roleId: RoleId) {
   const toggles = snapshot.subfeatureToggles[card.id] ?? {};
   const configs = snapshot.subfeatureConfigs[card.id] ?? {};
@@ -167,8 +182,7 @@ function App() {
   const [promptValues, setPromptValues] = useState<PromptValues>({});
 
   useEffect(() => {
-    setSnapshot(emptySnapshot);
-    window.localStorage.removeItem(STORAGE_KEY);
+    setSnapshot(loadSnapshot());
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setHasHydrated(true);
   }, []);
@@ -252,14 +266,7 @@ function App() {
   }
 
   function handleRoleSelect(role: RoleDefinition) {
-    updateSnapshot(() => ({
-      ...emptySnapshot,
-      selectedRole: role.id,
-      cardStates: buildInitialCardStates(),
-      subfeatureToggles: buildInitialToggleStore(role.id),
-      subfeatureConfigs: buildInitialConfigStore(role.id),
-      phase: "builder"
-    }));
+    setSnapshot(createBuilderSnapshot(role.id, "auto"));
     setSelectedCardId(null);
     setSelectedSubfeatureId(null);
     setCardQuery("");
@@ -418,6 +425,33 @@ function App() {
     window.localStorage.removeItem(STORAGE_KEY);
   }
 
+  function resetSelections() {
+    if (!snapshot.selectedRole) {
+      return;
+    }
+    setSnapshot(createBuilderSnapshot(snapshot.selectedRole, "empty"));
+    setSelectedCardId(null);
+    setSelectedSubfeatureId(null);
+    setCardQuery("");
+    setMobileLibraryOpen(false);
+    setShowLaunchConfirm(false);
+    setPromptValues({});
+    window.localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function autoBuildSelections() {
+    if (!snapshot.selectedRole) {
+      return;
+    }
+    setSnapshot(createBuilderSnapshot(snapshot.selectedRole, "auto"));
+    setSelectedCardId(null);
+    setSelectedSubfeatureId(null);
+    setCardQuery("");
+    setMobileLibraryOpen(false);
+    setShowLaunchConfirm(false);
+    setPromptValues({});
+  }
+
   function handleDragStart(event: DragStartEvent) {
     const activeId = String(event.active.id);
     if (activeId.startsWith("library:")) {
@@ -485,6 +519,12 @@ function App() {
               <h1>Build your platform</h1>
             </div>
             <div className="builder-header-actions">
+              <button className="secondary-button" onClick={resetSelections}>
+                Reset selections
+              </button>
+              <button className="secondary-button" onClick={autoBuildSelections}>
+                Auto build
+              </button>
               <button className="secondary-button" onClick={resetBuilder}>
                 Back to role selection
               </button>
@@ -1187,6 +1227,7 @@ function LaunchSuccessScreen({
       enabledSubfeatures: card.subfeatures.filter((subfeature) => snapshot.subfeatureToggles[card.id]?.[subfeature.id])
     }))
     .filter((item) => item.enabledSubfeatures.length > 0);
+  const launchedNavItems = useMemo(() => buildLaunchedNavItems(launchedCards), [launchedCards]);
 
   const [activeView, setActiveView] = useState<LaunchedShellView>("home");
   const [peopleViewId, setPeopleViewId] = useState<LeadViewId>("all-leads");
@@ -1282,6 +1323,8 @@ function LaunchSuccessScreen({
         activeView={activeView}
         activeProfileEmail={activeDemoAccount.email}
         activeProfileName={activeDemoAccount.name}
+        headerItems={launchedNavItems}
+        onStartAnotherSetup={onReset}
         onNavigateHome={() => setActiveView("home")}
         onNavigateMessages={() => setActiveView("messages")}
         onNavigateNegotiation={() => setActiveView("negotiation")}
@@ -1309,9 +1352,6 @@ function LaunchSuccessScreen({
                 <button className="dashboard-grid-button" aria-label="Dashboard layout">
                   <LayoutGrid size={16} />
                 </button>
-                <button className="secondary-button" onClick={onReset}>
-                  Start another setup
-                </button>
               </div>
             </div>
 
@@ -1334,11 +1374,6 @@ function LaunchSuccessScreen({
         </div>
         ) : activeView === "crm-people" ? (
           <div className="lofty-shell-section">
-            <div className="lofty-shell-toolbar">
-              <button className="secondary-button" onClick={onReset}>
-                Start another setup
-              </button>
-            </div>
             <div className="dashboard-page">
               <PeopleWorkspace
                 role={role}
@@ -1350,11 +1385,6 @@ function LaunchSuccessScreen({
           </div>
         ) : activeView === "messages" ? (
           <>
-            <div className="lofty-shell-toolbar">
-              <button className="secondary-button" onClick={onReset}>
-                Start another setup
-              </button>
-            </div>
             <MessagesWorkspace
               profile={activeDemoProfile}
               feature={negotiationFeature}
@@ -1363,11 +1393,6 @@ function LaunchSuccessScreen({
           </>
         ) : (
           <>
-            <div className="lofty-shell-toolbar">
-              <button className="secondary-button" onClick={onReset}>
-                Start another setup
-              </button>
-            </div>
             <NegotiationWorkspace
               profile={activeDemoProfile}
               feature={negotiationFeature}

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { LaunchedShellView } from "../types";
+import type { LaunchedNavItem, LaunchedShellView } from "../types";
 
 const attrs = {
   shell: { "data-v-43af4082": "" },
@@ -20,22 +20,6 @@ const attrs = {
   slot: { "data-v-759a198c": "" }
 };
 
-type ShellSubmenuItem = {
-  href?: string;
-  icon?: string;
-  label: string;
-  submenu?: Array<{ href?: string; label: string }>;
-  view?: LaunchedShellView;
-};
-
-type ShellHeaderItem = {
-  href?: string;
-  icon?: string;
-  isAi?: boolean;
-  label: string;
-  submenu?: ShellSubmenuItem[];
-};
-
 type UtilityItem = {
   id: string;
   icon: string;
@@ -47,90 +31,6 @@ type UtilityItem = {
   view?: Extract<LaunchedShellView, "messages" | "negotiation">;
   opensProfileSwitch?: boolean;
 };
-
-const headerItems: ShellHeaderItem[] = [
-  {
-    label: "CRM",
-    href: "/",
-    submenu: [
-      { label: "People", icon: "icon-people_06", view: "crm-people" },
-      { label: "Segments", icon: "icon-group_01", href: "/" },
-      { label: "Tasks", icon: "icon-task_01", href: "/" },
-      { label: "Calendar", icon: "icon-calendar_01", href: "/" }
-    ]
-  },
-  {
-    label: "Sales",
-    href: "/",
-    submenu: [
-      { label: "Showing", icon: "icon-CRM-showing", href: "/" },
-      { label: "Offers", icon: "icon-offer_01", href: "/" },
-      { label: "Transactions", icon: "icon-Transaction", href: "/" }
-    ]
-  },
-  {
-    label: "Marketing",
-    href: "/",
-    submenu: [
-      { label: "Emails", icon: "icon-mail_01", href: "/" },
-      { label: "Text Messages", icon: "icon-message_01", href: "/" },
-      { label: "Social Agent", icon: "icon-social_01", href: "/" },
-      { label: "Direct Mail", icon: "icon-mailbox_01", href: "/" },
-      {
-        label: "Lead Generation",
-        icon: "icon-lead_capture",
-        href: "/",
-        submenu: [
-          { label: "Buyer Lead Gen", href: "/" },
-          { label: "Seller Lead Gen", href: "/" },
-          { label: "Re-Marketing Ads", href: "/" }
-        ]
-      },
-      { label: "Lofty Bloom", icon: "icon-location_03", href: "/" },
-      {
-        label: "Brand Awareness",
-        icon: "icon-brag",
-        href: "/",
-        submenu: [{ label: "Local Service Ads", href: "/" }]
-      }
-    ]
-  },
-  {
-    label: "Content",
-    submenu: [
-      { label: "Websites", icon: "icon-Website1" },
-      { label: "Landing Pages", icon: "icon-site_style", href: "/" },
-      { label: "Lofty Present", icon: "icon-listhome_01", href: "/" },
-      { label: "Open House Form", icon: "icon-letter_01", href: "/" },
-      { label: "Design Center", icon: "icon-editimage_01", href: "/" }
-    ]
-  },
-  {
-    label: "Automation",
-    href: "/",
-    submenu: [
-      { label: "Smart Plans", icon: "icon-smart_plan_01", href: "/" },
-      { label: "Homeowner Agent", icon: "icon-house_17", href: "/" },
-      { label: "Auto Property Alert", icon: "icon-Vector", href: "/" },
-      { label: "Text Codes", icon: "icon-message_01", href: "/" }
-    ]
-  },
-  { label: "Reporting", href: "/" },
-  {
-    label: "Marketplace",
-    href: "/",
-    submenu: [
-      { label: "Marketplace", icon: "icon-Marketplace", href: "/" },
-      { label: "Integration Center", icon: "icon-integration_01", href: "/" }
-    ]
-  },
-  {
-    label: "AI Copilots",
-    href: "/",
-    icon: "icon-AI",
-    isAi: true
-  }
-];
 
 const utilityItems: UtilityItem[] = [
   {
@@ -212,12 +112,14 @@ function isExternalHref(href: string) {
   return href.startsWith("http://") || href.startsWith("https://");
 }
 
-function dropdownMaskStyle(isOpen: boolean) {
+function dropdownMaskStyle() {
   return {
-    display: isOpen ? "block" : "none",
+    display: "none",
     pointerEvents: "none" as const
   };
 }
+
+const HOVER_CLOSE_DELAY_MS = 80;
 
 function MenuItemAction({
   children,
@@ -266,23 +168,55 @@ function MenuItemAction({
 function MenuSubitem({
   activeView,
   item,
+  onNavigateHome,
   onNavigate
 }: {
   activeView: LaunchedShellView;
-  item: ShellSubmenuItem;
+  item: LaunchedNavItem;
+  onNavigateHome: () => void;
   onNavigate: (view: LaunchedShellView) => void;
 }) {
   const [isNestedOpen, setIsNestedOpen] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
   const isActive = item.view ? activeView === item.view : false;
+  const itemAction = item.view ? () => onNavigate(item.view as LaunchedShellView) : item.href === "/" ? onNavigateHome : undefined;
 
-  if (!item.submenu) {
+  function clearCloseTimer() {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }
+
+  function openNestedMenu() {
+    clearCloseTimer();
+    setIsNestedOpen(true);
+  }
+
+  function closeNestedMenu() {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setIsNestedOpen(false);
+      closeTimerRef.current = null;
+    }, HOVER_CLOSE_DELAY_MS);
+  }
+
+  useEffect(() => {
+    return () => {
+      clearCloseTimer();
+    };
+  }, []);
+
+  const nestedItems = item.submenu ?? [];
+
+  if (nestedItems.length === 0) {
     return (
       <MenuItemAction
         {...attrs.dropdown}
         className={`crm-only-header-menu__item crm-only-header-menu__subitem ${isActive ? "is-active" : ""}`.trim()}
-        href={item.href}
+        href={item.href && item.href !== "/" ? item.href : undefined}
         needicon=""
-        onAction={item.view ? () => onNavigate(item.view!) : undefined}
+        onAction={itemAction}
       >
         {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
         <span {...attrs.dropdown} className="crm-only-header-menu__title">
@@ -296,15 +230,16 @@ function MenuSubitem({
     <div
       {...attrs.dropdown}
       className="com-dropdownbox menu-dropdown-header crm-only-header-menu__subitem lofty-nav-submenu"
-      onMouseEnter={() => setIsNestedOpen(true)}
-      onMouseLeave={() => setIsNestedOpen(false)}
+      onMouseEnter={openNestedMenu}
+      onMouseLeave={closeNestedMenu}
     >
-      <div className="com-dropdown-mask" style={dropdownMaskStyle(isNestedOpen)}></div>
+      <div className="com-dropdown-mask" style={dropdownMaskStyle()}></div>
       <div className="com-dropdown-body">
         <MenuItemAction
           {...attrs.dropdown}
           className="crm-only-header-menu__item hoverCursor lofty-nav-submenu__trigger"
-          href={item.href}
+          href={item.href && item.href !== "/" ? item.href : undefined}
+          onAction={item.href === "/" ? onNavigateHome : undefined}
         >
           {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
           <span {...attrs.dropdown} className="crm-only-header-menu__title">
@@ -313,20 +248,21 @@ function MenuSubitem({
           <span {...attrs.dropdown} className="icon2017 icon-arrow_08_right lofty-nav-submenu__arrow"></span>
         </MenuItemAction>
       </div>
-      <div className="com-dropdown lofty-nav-submenu__flyout" style={{ display: isNestedOpen ? "block" : "none" }}>
+      <div
+        className="com-dropdown lofty-nav-submenu__flyout"
+        style={{ display: isNestedOpen ? "block" : "none" }}
+        onMouseEnter={openNestedMenu}
+        onMouseLeave={closeNestedMenu}
+      >
         <div className="com-dropdown-content crm-only-header-menu__dropdown">
-          {item.submenu.map((subitem) => (
-            <MenuItemAction
+          {nestedItems.map((subitem) => (
+            <MenuSubitem
               key={subitem.label}
-              {...attrs.dropdown}
-              className="crm-only-header-menu__item crm-only-header-menu__subitem"
-              href={subitem.href}
-              needicon=""
-            >
-              <span {...attrs.dropdown} className="crm-only-header-menu__title">
-                {subitem.label}
-              </span>
-            </MenuItemAction>
+              activeView={activeView}
+              item={subitem}
+              onNavigateHome={onNavigateHome}
+              onNavigate={onNavigate}
+            />
           ))}
         </div>
       </div>
@@ -334,33 +270,73 @@ function MenuSubitem({
   );
 }
 
+function isNavItemActive(item: LaunchedNavItem, activeView: LaunchedShellView): boolean {
+  if (item.view && item.view === activeView) {
+    return true;
+  }
+
+  return (item.submenu ?? []).some((subitem) => isNavItemActive(subitem, activeView));
+}
+
 function HeaderMenuCell({
   activeView,
   index,
   item,
+  onNavigateHome,
   openMenu,
   setOpenMenu,
   onNavigate
 }: {
   activeView: LaunchedShellView;
   index: number;
-  item: ShellHeaderItem;
+  item: LaunchedNavItem;
+  onNavigateHome: () => void;
   openMenu: string | null;
   setOpenMenu: React.Dispatch<React.SetStateAction<string | null>>;
   onNavigate: (view: LaunchedShellView) => void;
 }) {
   const isOpen = openMenu === item.label;
-  const isActive = activeView === "crm-people" && item.label === "CRM";
+  const isActive = isNavItemActive(item, activeView);
+  const closeTimerRef = useRef<number | null>(null);
 
-  if (!item.submenu) {
+  function clearCloseTimer() {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }
+
+  function openMenuWithDelay() {
+    clearCloseTimer();
+    setOpenMenu(item.label);
+  }
+
+  function closeMenuWithDelay() {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setOpenMenu((current) => (current === item.label ? null : current));
+      closeTimerRef.current = null;
+    }, HOVER_CLOSE_DELAY_MS);
+  }
+
+  useEffect(() => {
+    return () => {
+      clearCloseTimer();
+    };
+  }, []);
+
+  const submenuItems = item.submenu ?? [];
+
+  if (submenuItems.length === 0) {
     return (
       <div {...attrs.overflow} id={`com-overflow-display-cell-${index}`} data-index={index} className="display-cell">
         <MenuItemAction
           {...attrs.dropdown}
           {...attrs.menu}
           className={`crm-only-header-menu__item isTop ${isActive ? "is-active " : ""}${item.isAi ? "flex lofty-ai-menu" : ""}`.trim()}
-          href={item.href}
+          href={item.href && item.href !== "/" ? item.href : undefined}
           data-v-f4100c9e=""
+          onAction={item.href === "/" ? onNavigateHome : undefined}
         >
           {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
           <span {...attrs.dropdown} className="crm-only-header-menu__title isTop">
@@ -377,26 +353,38 @@ function HeaderMenuCell({
       id={`com-overflow-display-cell-${index}`}
       data-index={index}
       className="display-cell"
-      onMouseEnter={() => setOpenMenu(item.label)}
-      onMouseLeave={() => setOpenMenu((current) => (current === item.label ? null : current))}
+      onMouseEnter={openMenuWithDelay}
+      onMouseLeave={closeMenuWithDelay}
     >
-      <div {...attrs.dropdown} {...attrs.menu} data-v-f4100c9e="" className="com-dropdownbox menu-dropdown-header">
-        <div className="com-dropdown-mask" style={dropdownMaskStyle(isOpen)}></div>
-        <div className="com-dropdown-body">
-          <MenuItemAction
-            {...attrs.dropdown}
-            className={`crm-only-header-menu__item isTop ${isActive ? "is-active " : ""}${item.href ? "hoverCursor" : "cursor-default"}`.trim()}
-            href={item.href}
-          >
-            <span {...attrs.dropdown} className="crm-only-header-menu__title isTop">
-              {item.label}
-            </span>
+        <div {...attrs.dropdown} {...attrs.menu} data-v-f4100c9e="" className="com-dropdownbox menu-dropdown-header">
+          <div className="com-dropdown-mask" style={dropdownMaskStyle()}></div>
+          <div className="com-dropdown-body">
+            <MenuItemAction
+              {...attrs.dropdown}
+              className={`crm-only-header-menu__item isTop ${isActive ? "is-active " : ""}${item.href ? "hoverCursor" : "cursor-default"}`.trim()}
+              href={item.href && item.href !== "/" ? item.href : undefined}
+              onAction={item.href === "/" ? onNavigateHome : undefined}
+            >
+              <span {...attrs.dropdown} className="crm-only-header-menu__title isTop">
+                {item.label}
+              </span>
           </MenuItemAction>
         </div>
-        <div className="com-dropdown" style={{ display: isOpen ? "block" : "none" }}>
-          <div className="com-dropdown-content crm-only-header-menu__dropdown">
-            {item.submenu.map((subitem) => (
-              <MenuSubitem key={subitem.label} activeView={activeView} item={subitem} onNavigate={onNavigate} />
+        <div
+          className="com-dropdown"
+          style={{ display: isOpen ? "block" : "none" }}
+          onMouseEnter={openMenuWithDelay}
+          onMouseLeave={closeMenuWithDelay}
+        >
+            <div className="com-dropdown-content crm-only-header-menu__dropdown">
+            {submenuItems.map((subitem) => (
+              <MenuSubitem
+                key={subitem.label}
+                activeView={activeView}
+                item={subitem}
+                onNavigateHome={onNavigateHome}
+                onNavigate={onNavigate}
+              />
             ))}
           </div>
         </div>
@@ -440,6 +428,8 @@ export default function LoftyLaunchedShell({
   children,
   activeProfileEmail,
   activeProfileName,
+  headerItems,
+  onStartAnotherSetup,
   onNavigateHome,
   onNavigateMessages,
   onNavigateNegotiation,
@@ -450,6 +440,8 @@ export default function LoftyLaunchedShell({
   children: ReactNode;
   activeProfileEmail: string;
   activeProfileName: string;
+  headerItems: LaunchedNavItem[];
+  onStartAnotherSetup: () => void;
   onNavigateHome: () => void;
   onNavigateMessages: () => void;
   onNavigateNegotiation: () => void;
@@ -489,6 +481,14 @@ export default function LoftyLaunchedShell({
     onNavigateNegotiation();
   }
 
+  function handleNavigateHome() {
+    setOpenMenu(null);
+    setUserMenuOpen(false);
+    setActiveUtilityId(null);
+    setSearchOpen(false);
+    onNavigateHome();
+  }
+
   function handleUtilityItemClick(item: UtilityItem) {
     if (item.view) {
       setActiveUtilityId(null);
@@ -504,6 +504,11 @@ export default function LoftyLaunchedShell({
     }
 
     setActiveUtilityId((current) => (current === item.id ? null : item.id));
+  }
+
+  function handleStartAnotherSetup() {
+    setUserMenuOpen(false);
+    onStartAnotherSetup();
   }
 
   useEffect(() => {
@@ -551,7 +556,7 @@ export default function LoftyLaunchedShell({
                     {...attrs.header}
                     className={`logo header-logo router-link-active lofty-reset-button ${activeView === "home" ? "launched-brand-button--active" : ""}`.trim()}
                     type="button"
-                    onClick={onNavigateHome}
+                    onClick={handleNavigateHome}
                   >
                     <img {...attrs.header} src="/frozen-lofty/Lofty_files/Lofty_Logo.png" alt="logo" style={{ width: "100px" }} />
                   </button>
@@ -574,6 +579,7 @@ export default function LoftyLaunchedShell({
                             activeView={activeView}
                             index={index}
                             item={item}
+                            onNavigateHome={handleNavigateHome}
                             openMenu={openMenu}
                             setOpenMenu={setOpenMenu}
                             onNavigate={handleNavigate}
@@ -658,10 +664,25 @@ export default function LoftyLaunchedShell({
         </section>
 
         <div {...attrs.rightPanel} {...attrs.shell} className="right-panel-wrapper">
-          <div {...attrs.utility} {...attrs.rightPanel} className="right-menu-wrapper">
+            <div {...attrs.utility} {...attrs.rightPanel} className="right-menu-wrapper">
             <div {...attrs.utility} className="right-menu-user-box">
-              <div {...attrs.user} {...attrs.utility} className="com-dropdownbox">
-                <div className="com-dropdown-mask" style={dropdownMaskStyle(userMenuOpen)}></div>
+              {userMenuOpen ? (
+                <button
+                  className="lofty-reset-button lofty-user-menu-backdrop"
+                  type="button"
+                  aria-label="Close user menu"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  onClick={() => setUserMenuOpen(false)}
+                />
+              ) : null}
+              <div
+                {...attrs.user}
+                {...attrs.utility}
+                className="com-dropdownbox"
+                style={userMenuOpen ? { zIndex: 60 } : undefined}
+              >
+                <div className="com-dropdown-mask" style={dropdownMaskStyle()}></div>
                 <button
                   {...attrs.user}
                   className="com-dropdown-body lofty-reset-button"
@@ -766,6 +787,21 @@ export default function LoftyLaunchedShell({
                             </div>
                           </li>
                         ))}
+                        <li {...attrs.user} className="list-item">
+                          <div {...attrs.user} className="flex-line">
+                            <button
+                              {...attrs.user}
+                              className="lofty-reset-button lofty-user-menu-action"
+                              type="button"
+                              onClick={handleStartAnotherSetup}
+                            >
+                              <span {...attrs.user}>
+                                <i {...attrs.user} className="icon2017 icon-re_01"></i>
+                                <span {...attrs.user}>Start another setup</span>
+                              </span>
+                            </button>
+                          </div>
+                        </li>
                         <li {...attrs.user} className="list-item logout">
                           <div {...attrs.user} className="flex-line">
                             <span {...attrs.user}>
