@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   closestCenter,
@@ -1544,6 +1544,7 @@ function LaunchSuccessScreen({
   const [copilotIsSending, setCopilotIsSending] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
   const [copilotHydrated, setCopilotHydrated] = useState(false);
+  const copilotRequestIdRef = useRef(0);
   const negotiationFeature = useNegotiationFeatureState(DEMO_LISTING_ID);
 
   const people = useMemo(() => getDashboardPeopleForRole(role.id), [role.id]);
@@ -1805,6 +1806,8 @@ function LaunchSuccessScreen({
       return;
     }
 
+    const requestId = copilotRequestIdRef.current + 1;
+    copilotRequestIdRef.current = requestId;
     const userMessage = createCopilotMessage("user", nextPrompt);
     const nextMessages = [...copilotMessages, userMessage];
 
@@ -1836,6 +1839,10 @@ function LaunchSuccessScreen({
 
       const payload = (await response.json().catch(() => ({}))) as CopilotChatResponse;
 
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
       if (!response.ok || !payload.message) {
         if (!promptOverride) {
           setCopilotDraft(nextPrompt);
@@ -1846,6 +1853,10 @@ function LaunchSuccessScreen({
 
       setCopilotMessages([...nextMessages, payload.message]);
     } catch (error) {
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
       if (!promptOverride) {
         setCopilotDraft(nextPrompt);
       }
@@ -1862,7 +1873,9 @@ function LaunchSuccessScreen({
 
       setCopilotError(`${fallbackMessage} Please check the app connection and try again.`);
     } finally {
-      setCopilotIsSending(false);
+      if (requestId === copilotRequestIdRef.current) {
+        setCopilotIsSending(false);
+      }
     }
   }
 
@@ -1886,6 +1899,14 @@ function LaunchSuccessScreen({
     });
 
     void sendCopilotMessage(starterPrompt);
+  }
+
+  function handleClearCopilotChat() {
+    copilotRequestIdRef.current += 1;
+    setCopilotMessages([]);
+    setCopilotDraft("");
+    setCopilotError(null);
+    setCopilotIsSending(false);
   }
 
   return (
@@ -1943,6 +1964,7 @@ function LaunchSuccessScreen({
                   setCopilotError(null);
                 }
               }}
+              onClearChat={handleClearCopilotChat}
               onSend={() => void sendCopilotMessage()}
               onStartBuilding={handleStartBuildingPrompt}
             />

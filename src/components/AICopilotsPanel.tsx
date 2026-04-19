@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { LoaderCircle, SendHorizontal, WandSparkles } from "lucide-react";
+import { LoaderCircle, RotateCcw, SendHorizontal, WandSparkles } from "lucide-react";
 
 import {
   COPILOT_MODEL_OPTIONS,
@@ -21,6 +21,7 @@ type AICopilotsPanelProps = {
   enabledListingCount: number;
   onDraftChange: (value: string) => void;
   onModelChange: (modelId: CopilotModelId) => void;
+  onClearChat: () => void;
   onSend: () => void;
   onStartBuilding: () => void;
 };
@@ -35,12 +36,14 @@ export default function AICopilotsPanel({
   enabledListingCount,
   onDraftChange,
   onModelChange,
+  onClearChat,
   onSend,
   onStartBuilding
 }: AICopilotsPanelProps) {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const selectedModel = useMemo(() => getCopilotModelOption(selectedModelId), [selectedModelId]);
   const isIdxBuilder = activeView === "idx-builder";
+  const hasActiveChat = messages.length > 0 || isSending;
 
   useEffect(() => {
     const container = transcriptRef.current;
@@ -53,50 +56,74 @@ export default function AICopilotsPanel({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!draft.trim()) {
+      return;
+    }
     onSend();
   }
 
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
+      if (!draft.trim()) {
+        return;
+      }
       onSend();
     }
   }
 
   return (
     <div className="ai-copilots-panel">
-      <div className="ai-copilots-panel__intro">
-        <div>
-          <span className="section-kicker">{isIdxBuilder ? "IDX Builder" : "AI Copilots"}</span>
-          <h3>{isIdxBuilder ? "AI Copilots are standing by" : "Chat with Lofty AI"}</h3>
-          <p>
-            {isIdxBuilder
-              ? `Use Gemini to draft your first website direction with ${enabledListingCount} connected listing${enabledListingCount === 1 ? "" : "s"} in context.`
-              : "Ask for copy, workflow help, quick research, or launch guidance from anywhere in the launched workspace."}
-          </p>
-        </div>
+      {!hasActiveChat ? (
+        <>
+          <div className="ai-copilots-panel__intro">
+            <div>
+              <span className="section-kicker">{isIdxBuilder ? "IDX Builder" : "AI Copilots"}</span>
+              <h3>{isIdxBuilder ? "AI Copilots are standing by" : "Chat with Lofty AI"}</h3>
+              <p>
+                {isIdxBuilder
+                  ? `Use Gemini to draft your first website direction with ${enabledListingCount} connected listing${enabledListingCount === 1 ? "" : "s"} in context.`
+                  : "Ask for copy, workflow help, quick research, or launch guidance from anywhere in the launched workspace."}
+              </p>
+            </div>
 
-        {isIdxBuilder ? (
-          <button className="primary-button ai-copilots-panel__starter" type="button" onClick={onStartBuilding} disabled={isSending}>
-            <WandSparkles size={16} />
-            Start building
+            {isIdxBuilder ? (
+              <button
+                className="primary-button ai-copilots-panel__starter"
+                type="button"
+                onClick={onStartBuilding}
+                disabled={isSending}
+              >
+                <WandSparkles size={16} />
+                Start building
+              </button>
+            ) : null}
+          </div>
+
+          <div className="ai-copilots-panel__toolbar">
+            <label className="ai-copilots-panel__field">
+              <span>Model</span>
+              <select value={selectedModelId} onChange={(event) => onModelChange(event.target.value as CopilotModelId)} disabled={isSending}>
+                {COPILOT_MODEL_OPTIONS.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="ai-copilots-panel__model-note">Replies are currently powered by {selectedModel.label}.</div>
+          </div>
+        </>
+      ) : null}
+
+      {hasActiveChat ? (
+        <div className="ai-copilots-panel__session-actions">
+          <button className="secondary-button ai-copilots-panel__clear" type="button" onClick={onClearChat}>
+            <RotateCcw size={15} />
+            Clear chat
           </button>
-        ) : null}
-      </div>
-
-      <div className="ai-copilots-panel__toolbar">
-        <label className="ai-copilots-panel__field">
-          <span>Model</span>
-          <select value={selectedModelId} onChange={(event) => onModelChange(event.target.value as CopilotModelId)} disabled={isSending}>
-            {COPILOT_MODEL_OPTIONS.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="ai-copilots-panel__model-note">Replies are currently powered by {selectedModel.label}.</div>
-      </div>
+        </div>
+      ) : null}
 
       <div ref={transcriptRef} className="ai-copilots-panel__transcript" aria-live="polite">
         {messages.length === 0 ? (
