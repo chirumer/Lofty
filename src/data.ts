@@ -16,8 +16,15 @@ import {
 import type {
   CardState,
   CardToggleStore,
+  DashboardPerson,
+  DashboardUpdate,
+  HotSheetItem,
+  LeadAppointment,
+  LeadTask,
+  LeadViewId,
   LibraryCardDefinition,
   LibraryCardId,
+  ListingInsight,
   OnboardingSnapshot,
   PresetDefinition,
   PromptConfigStore,
@@ -90,6 +97,20 @@ function subfeature(
     lockedReason,
     defaultEnabled
   };
+}
+
+function leadTask(id: string, type: LeadTask["type"], title: string, timeLabel: string, completed = false): LeadTask {
+  return { id, type, title, timeLabel, completed };
+}
+
+function leadAppointment(
+  id: string,
+  type: LeadAppointment["type"],
+  title: string,
+  timeLabel: string,
+  incomplete = false
+): LeadAppointment {
+  return { id, type, title, timeLabel, incomplete };
 }
 
 export const topNavItems: Array<{ id: LibraryCardId; label: string }> = [
@@ -895,6 +916,209 @@ export const roleSelectionCopy: Record<RoleId, string> = {
   lender: "Collaborate with agents on shared leads."
 };
 
+export const dashboardUpdates: DashboardUpdate[] = [
+  {
+    id: "done-for-you-site",
+    title: "New service: done-for-you website",
+    description: "We build the site, you focus on leads and follow-up.",
+    accent: "gradient-blue"
+  },
+  {
+    id: "ai-feature",
+    title: "AI follow-up now supports seller nurture",
+    description: "Use AI workflows to keep warm sellers moving.",
+    accent: "gradient-soft"
+  }
+];
+
+export const dashboardPeople: DashboardPerson[] = [
+  {
+    id: "lead-emily-wilson",
+    name: "Emily Wilson",
+    leadType: "Renter",
+    source: "Facebook",
+    stage: "New lead",
+    score: 59,
+    roles: ["Renter"],
+    views: ["all-leads", "my-leads"],
+    untouched: true,
+    isNewLead: true,
+    segments: ["Not replied to today", "Lofty paid leads"],
+    opportunities: ["Back to Site"],
+    lastActivity: "Opened three rental listings this morning",
+    tasks: [leadTask("task-emily-call", "Call", "Call back for rental needs", "10:00 AM")],
+    appointments: [leadAppointment("appt-emily-showing", "Showing", "Downtown loft tour", "04:30 PM", true)],
+    transaction: null
+  },
+  {
+    id: "lead-carlos-garcia",
+    name: "Carlos Garcia",
+    leadType: "Other",
+    source: "Zillow",
+    stage: "Engaged",
+    score: 44,
+    roles: ["Buyer", "Seller"],
+    views: ["all-leads", "my-leads"],
+    untouched: true,
+    isNewLead: true,
+    keepInTouch: "Follow-Up",
+    followUpLabel: "Follow up every 14 days",
+    opportunities: ["High Interest"],
+    segments: ["Call activity", "Active website browsing"],
+    lastActivity: "Requested a market update",
+    tasks: [leadTask("task-carlos-text", "Text", "Send market update text", "01:15 PM")],
+    appointments: [],
+    transaction: {
+      id: "txn-carlos-1",
+      address: "3931 Via Montalvo, Campbell, CA 95008",
+      status: "Near Deadline",
+      checklistCount: 2
+    }
+  },
+  {
+    id: "lead-samuel-scott",
+    name: "Samuel Scott",
+    leadType: "Buyer",
+    source: "YouTube",
+    stage: "Active search",
+    score: 43,
+    roles: ["Buyer"],
+    views: ["all-leads", "my-leads"],
+    untouched: true,
+    isNewLead: true,
+    opportunities: ["High Interest"],
+    segments: ["Text activity", "Active website browsing"],
+    savedSearch: "Phoenix mid-century homes",
+    lastActivity: "Saved a listing and viewed financing tips",
+    tasks: [leadTask("task-samuel-email", "Email", "Send saved search recap", "02:00 PM")],
+    appointments: [leadAppointment("appt-samuel-buyer", "Appointment", "Buyer consult", "03:00 PM", true)],
+    transaction: null
+  },
+  {
+    id: "lead-kristin-watson",
+    name: "Kristin Watson",
+    leadType: "Buyer",
+    source: "Website",
+    stage: "Nurture",
+    score: 88,
+    roles: ["Buyer", "Seller", "Renter", "Investor"],
+    views: ["all-leads", "my-leads"],
+    keepInTouch: "Birthday",
+    birthdayLabel: "Birthday · Apr 29",
+    opportunities: ["Likely Seller"],
+    segments: ["Birthday this month", "Email activity"],
+    lastActivity: "Viewed home valuation page twice this week",
+    tasks: [leadTask("task-kristin-other", "Other", "Prepare seller valuation packet", "Anytime")],
+    appointments: [leadAppointment("appt-kristin-listing", "Appointment", "Seller strategy session", "11:00 AM", true)],
+    transaction: {
+      id: "txn-kristin-1",
+      address: "87 Valencia St, Half Moon Bay, CA 94019",
+      status: "Near Deadline",
+      checklistCount: 1
+    }
+  },
+  {
+    id: "lead-annette-black",
+    name: "Annette Black",
+    leadType: "Buyer",
+    source: "Website",
+    stage: "Showing requested",
+    score: 81,
+    roles: ["Buyer"],
+    views: ["all-leads", "my-leads", "partial-leads"],
+    opportunities: ["High Interest"],
+    segments: ["Active website browsing"],
+    lastActivity: "Requested a tour from the listing page",
+    tasks: [leadTask("task-annette-call", "Call", "Confirm showing request", "09:30 AM")],
+    appointments: [leadAppointment("appt-annette-showing", "Showing", "Request review for 182 Saint Peter", "12:00 PM", true)],
+    transaction: null
+  },
+  {
+    id: "lead-wade-warren",
+    name: "Wade Warren",
+    leadType: "Buyer",
+    source: "Home valuation",
+    stage: "Warm seller",
+    score: 76,
+    roles: ["Buyer", "Seller", "Renter", "Investor", "Agent"],
+    views: ["all-leads", "lead-pond"],
+    keepInTouch: "Follow-Up",
+    followUpLabel: "Home valuation follow-up",
+    opportunities: ["Likely Seller"],
+    segments: ["Seller watchlist"],
+    lastActivity: "Requested a home valuation",
+    tasks: [leadTask("task-wade-call", "Call", "Discuss home valuation request", "04:00 PM")],
+    appointments: [],
+    transaction: {
+      id: "txn-wade-1",
+      address: "2118 Thornridge Circus, Syracuse, CT 35624",
+      status: "Expired",
+      checklistCount: 2
+    }
+  },
+  {
+    id: "lead-jessica-phillips",
+    name: "Jessica Phillips",
+    leadType: "Buyer",
+    source: "Website",
+    stage: "Re-engaged",
+    score: 61,
+    roles: ["Buyer", "Seller", "Renter", "Investor", "Agent"],
+    views: ["all-leads", "my-leads", "lead-pond"],
+    opportunities: ["Back to Site"],
+    segments: ["Back to site", "Text activity"],
+    lastActivity: "Returned to site after 21 days away",
+    tasks: [leadTask("task-jessica-text", "Text", "Welcome back text", "11:30 AM")],
+    appointments: [],
+    transaction: null
+  },
+  {
+    id: "lead-michael-scott",
+    name: "Michael Scott",
+    leadType: "Buyer",
+    source: "Website",
+    stage: "Database nurture",
+    score: 48,
+    roles: ["Buyer"],
+    views: ["all-leads", "my-leads", "partial-leads"],
+    keepInTouch: "Follow-Up",
+    followUpLabel: "Spanish speaking follow-up",
+    segments: ["Text activity"],
+    lastActivity: "Asked for neighborhood recommendations",
+    tasks: [leadTask("task-michael-other", "Other", "Spanish follow-up", "12:00 AM")],
+    appointments: [],
+    transaction: null
+  }
+];
+
+export const listingInsights: ListingInsight[] = [
+  {
+    id: "listing-182-saint-peter",
+    title: "182 Saint Peter St",
+    location: "Riverside, CA 10192",
+    trend: "No engagement in 15 days"
+  },
+  {
+    id: "listing-1824-saint-peter",
+    title: "1824 Saint Peter St",
+    location: "Riverside, CA 10192",
+    trend: "New showing request"
+  },
+  {
+    id: "listing-93-orchard",
+    title: "93 Orchard Way",
+    location: "Scottsdale, AZ 85251",
+    trend: "Viewed by 4 warm buyers"
+  }
+];
+
+export const hotSheetItems: HotSheetItem[] = [
+  { id: "hs-open-house", label: "Upcoming Open House", count: 12 },
+  { id: "hs-back-market", label: "Back on Market", count: 8 },
+  { id: "hs-price-reduced", label: "Price Reduced", count: 21 },
+  { id: "hs-new-listings", label: "New Listings", count: 36 }
+];
+
 export function getRoleById(roleId: RoleId) {
   return roleDefinitions.find((role) => role.id === roleId)!;
 }
@@ -1008,4 +1232,19 @@ export function deriveLaunchReady(snapshot: OnboardingSnapshot) {
   return getAccessibleCards(snapshot.selectedRole)
     .filter((card) => card.requiredFor.includes(snapshot.selectedRole!))
     .every((card) => snapshot.cardStates[card.id] === "built");
+}
+
+export function getDashboardPeopleForRole(roleId: RoleId) {
+  if (roleId === "lender") {
+    return dashboardPeople.filter((person) => person.transaction || person.views.includes("partial-leads"));
+  }
+  if (roleId === "agent-user") {
+    return dashboardPeople.filter((person) => person.views.includes("my-leads"));
+  }
+  return dashboardPeople;
+}
+
+export function getPeopleViewList(viewId: LeadViewId, roleId: RoleId) {
+  const people = getDashboardPeopleForRole(roleId);
+  return people.filter((person) => person.views.includes(viewId));
 }

@@ -19,13 +19,22 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   AlertCircle,
   ArrowRight,
+  Bell,
+  CalendarDays,
   Check,
   ChevronDown,
+  ChevronRight,
+  Circle,
+  HelpCircle,
+  LayoutGrid,
+  Mail,
+  MessageSquare,
   Layers3,
   Lock,
+  Phone,
   Rocket,
   Search,
-  Sparkles,
+  Settings2,
   WandSparkles,
   X
 } from "lucide-react";
@@ -34,21 +43,26 @@ import {
   buildInitialConfigStore,
   buildInitialToggleStore,
   buildPromptDefaults,
+  dashboardUpdates,
   deriveLaunchReady,
   getAccessibleCards,
   getCardById,
-  getLockedCards,
-  getRecommendedCards,
+  getDashboardPeopleForRole,
+  getPeopleViewList,
   getRoleById,
   getSubfeature,
+  hotSheetItems,
   isCardRequiredForRole,
   libraryCardDefinitions,
+  listingInsights,
   roleDefinitions,
   roleSelectionCopy
 } from "./data";
 import type {
   CardState,
   CardToggleStore,
+  DashboardPerson,
+  LeadViewId,
   LibraryCardDefinition,
   LibraryCardId,
   OnboardingSnapshot,
@@ -163,11 +177,6 @@ function App() {
     [snapshot.selectedRole]
   );
 
-  const lockedCards = useMemo(
-    () => (snapshot.selectedRole ? getLockedCards(snapshot.selectedRole) : []),
-    [snapshot.selectedRole]
-  );
-
   const filteredCards = useMemo(() => {
     const query = cardQuery.trim().toLowerCase();
     if (!query) {
@@ -178,16 +187,6 @@ function App() {
       return haystack.includes(query);
     });
   }, [cardQuery]);
-
-  const selectedCard = useMemo(() => {
-    const preferredId = selectedCardId ?? snapshot.activeCardId;
-    return preferredId ? getCardById(preferredId) : null;
-  }, [selectedCardId, snapshot.activeCardId]);
-
-  const selectedSubfeature =
-    selectedCard && selectedSubfeatureId
-      ? selectedCard.subfeatures.find((item) => item.id === selectedSubfeatureId) ?? null
-      : null;
 
   const activeCard = snapshot.activeCardId ? getCardById(snapshot.activeCardId) : null;
 
@@ -208,11 +207,6 @@ function App() {
       (card) => !card.requiredFor.includes(snapshot.selectedRole!) && snapshot.cardStates[card.id] !== "built"
     );
   }, [accessibleCards, snapshot.cardStates, snapshot.selectedRole]);
-
-  const recommendedCards = useMemo(
-    () => (snapshot.selectedRole ? getRecommendedCards(snapshot.selectedRole).map(getCardById) : []),
-    [snapshot.selectedRole]
-  );
 
   const launchProgress = selectedRole
     ? Math.round(
@@ -310,7 +304,7 @@ function App() {
     }));
   }
 
-  function savePrompt() {
+  function commitPrompt(nextValues: PromptValues) {
     if (!snapshot.pendingPrompt || !pendingSubfeature) {
       return;
     }
@@ -319,7 +313,7 @@ function App() {
       if (!field.required) {
         return false;
       }
-      const value = promptValues[field.id];
+      const value = nextValues[field.id];
       if (typeof value === "boolean") {
         return value !== true;
       }
@@ -344,7 +338,7 @@ function App() {
         ...current.subfeatureConfigs,
         [cardId]: {
           ...(current.subfeatureConfigs[cardId] ?? {}),
-          [subfeatureId]: promptValues
+          [subfeatureId]: nextValues
         }
       },
       cardStates: {
@@ -353,6 +347,17 @@ function App() {
       },
       pendingPrompt: null
     }));
+  }
+
+  function savePrompt() {
+    commitPrompt(promptValues);
+  }
+
+  function quickSavePrompt(fieldId: string, value: string | boolean) {
+    commitPrompt({
+      ...promptValues,
+      [fieldId]: value
+    });
   }
 
   function closePrompt() {
@@ -482,20 +487,6 @@ function App() {
                 {requiredCardsRemaining.length} required tabs still open.
               </p>
             </div>
-            <div className="overview-card">
-              <div className="overview-card-title">
-                <h2>Recommended path</h2>
-                <p>These tabs are the best place to start for this role.</p>
-              </div>
-              <div className="chip-wrap">
-                {recommendedCards.map((card) => (
-                  <button key={card.id} className="template-pill" onClick={() => activateCard(card.id)}>
-                    <Sparkles size={14} />
-                    {card.label}
-                  </button>
-                ))}
-              </div>
-            </div>
           </section>
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -534,6 +525,7 @@ function App() {
                       }
                       onCancelPrompt={closePrompt}
                       onSavePrompt={savePrompt}
+                      onQuickSavePrompt={quickSavePrompt}
                       onBuild={buildActiveCard}
                     />
                   ) : (
@@ -692,7 +684,6 @@ function LibraryPanel({
       <div className="panel-header">
         <div>
           <h2>Layer Library</h2>
-          <p>These are the only eight setup tabs in the builder. Drag one into the workspace to configure it.</p>
         </div>
       </div>
 
@@ -807,6 +798,23 @@ function EmptyWorkspace() {
   );
 }
 
+function getConfigOptionIcon(option: string) {
+  const normalized = option.toLowerCase();
+
+  if (
+    normalized.includes("gmail") ||
+    normalized.includes("email") ||
+    normalized.includes("outlook") ||
+    normalized.includes("office") ||
+    normalized.includes("smtp") ||
+    normalized.includes("imap")
+  ) {
+    return <Mail size={18} />;
+  }
+
+  return <Circle size={10} fill="currentColor" strokeWidth={0} />;
+}
+
 function ActiveCard({
   card,
   roleId,
@@ -822,6 +830,7 @@ function ActiveCard({
   onPromptChange,
   onCancelPrompt,
   onSavePrompt,
+  onQuickSavePrompt,
   onBuild
 }: {
   card: LibraryCardDefinition;
@@ -838,6 +847,7 @@ function ActiveCard({
   onPromptChange: (fieldId: string, value: string | boolean) => void;
   onCancelPrompt: () => void;
   onSavePrompt: () => void;
+  onQuickSavePrompt: (fieldId: string, value: string | boolean) => void;
   onBuild: () => void;
 }) {
   const Icon = card.icon;
@@ -889,6 +899,10 @@ function ActiveCard({
               const configuring =
                 pendingPrompt?.cardId === card.id && pendingPrompt.subfeatureId === subfeature.id;
               const canConfigure = allowed && subfeature.promptFields.length > 0;
+              const minimalConfigField =
+                subfeature.promptFields.length === 1 && subfeature.promptFields[0]?.type === "select"
+                  ? subfeature.promptFields[0]
+                  : null;
               return (
                 <div
                   key={subfeature.id}
@@ -954,66 +968,95 @@ function ActiveCard({
 
                   {configuring ? (
                     <div className="subfeature-config-dropdown" onClick={(event) => event.stopPropagation()}>
-                      <div className="subfeature-config-header">
-                        <strong>Configure {subfeature.name}</strong>
-                        <span>{subfeature.setupSummary}</span>
-                      </div>
+                      {minimalConfigField ? (
+                        <div className="minimal-config-list">
+                          {minimalConfigField.options?.map((option) => {
+                            const selected = String(promptValues[minimalConfigField.id] ?? "") === option;
+                            return (
+                              <div key={option} className="minimal-config-option">
+                                <div className="minimal-config-option-main">
+                                  <span className="minimal-config-option-icon">{getConfigOptionIcon(option)}</span>
+                                  <strong>{option}</strong>
+                                </div>
+                                <button
+                                  className={`primary-button minimal-config-button ${selected ? "minimal-config-button--selected" : ""}`}
+                                  onClick={() => onQuickSavePrompt(minimalConfigField.id, option)}
+                                >
+                                  {selected ? "Selected" : "Connect"}
+                                </button>
+                              </div>
+                            );
+                          })}
+                          <div className="panel-button-row">
+                            <button className="secondary-button" onClick={onCancelPrompt}>
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="subfeature-config-header">
+                            <strong>Configure {subfeature.name}</strong>
+                            <span>{subfeature.setupSummary}</span>
+                          </div>
 
-                      <div className="field-stack">
-                        {subfeature.promptFields.map((field) => (
-                          <label key={field.id} className="field-block">
-                            <div className="field-label-row">
-                              <span>{field.label}</span>
-                              {field.required ? <small>Required</small> : <small>Optional</small>}
-                            </div>
+                          <div className="field-stack">
+                            {subfeature.promptFields.map((field) => (
+                              <label key={field.id} className="field-block">
+                                <div className="field-label-row">
+                                  <span>{field.label}</span>
+                                  {field.required ? <small>Required</small> : <small>Optional</small>}
+                                </div>
 
-                            {field.type === "select" ? (
-                              <select
-                                value={String(promptValues[field.id] ?? "")}
-                                onChange={(event) => onPromptChange(field.id, event.target.value)}
-                              >
-                                {field.options?.map((option) => (
-                                  <option key={option} value={option}>
-                                    {option}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : field.type === "textarea" ? (
-                              <textarea
-                                value={String(promptValues[field.id] ?? "")}
-                                placeholder={field.placeholder}
-                                onChange={(event) => onPromptChange(field.id, event.target.value)}
-                              />
-                            ) : field.type === "toggle" ? (
-                              <button
-                                type="button"
-                                className={`toggle-button ${promptValues[field.id] ? "toggle-button--on" : ""}`}
-                                onClick={() => onPromptChange(field.id, !Boolean(promptValues[field.id]))}
-                              >
-                                {promptValues[field.id] ? "On" : "Off"}
-                              </button>
-                            ) : (
-                              <input
-                                type="text"
-                                value={String(promptValues[field.id] ?? "")}
-                                placeholder={field.placeholder}
-                                onChange={(event) => onPromptChange(field.id, event.target.value)}
-                              />
-                            )}
+                                {field.type === "select" ? (
+                                  <select
+                                    value={String(promptValues[field.id] ?? "")}
+                                    onChange={(event) => onPromptChange(field.id, event.target.value)}
+                                  >
+                                    {field.options?.map((option) => (
+                                      <option key={option} value={option}>
+                                        {option}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : field.type === "textarea" ? (
+                                  <textarea
+                                    value={String(promptValues[field.id] ?? "")}
+                                    placeholder={field.placeholder}
+                                    onChange={(event) => onPromptChange(field.id, event.target.value)}
+                                  />
+                                ) : field.type === "toggle" ? (
+                                  <button
+                                    type="button"
+                                    className={`toggle-button ${promptValues[field.id] ? "toggle-button--on" : ""}`}
+                                    onClick={() => onPromptChange(field.id, !Boolean(promptValues[field.id]))}
+                                  >
+                                    {promptValues[field.id] ? "On" : "Off"}
+                                  </button>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={String(promptValues[field.id] ?? "")}
+                                    placeholder={field.placeholder}
+                                    onChange={(event) => onPromptChange(field.id, event.target.value)}
+                                  />
+                                )}
 
-                            <p>{field.helperText}</p>
-                          </label>
-                        ))}
-                      </div>
+                                <p>{field.helperText}</p>
+                              </label>
+                            ))}
+                          </div>
 
-                      <div className="panel-button-row">
-                        <button className="secondary-button" onClick={onCancelPrompt}>
-                          Cancel
-                        </button>
-                        <button className="primary-button" onClick={onSavePrompt}>
-                          Save and enable
-                        </button>
-                      </div>
+                          <div className="panel-button-row">
+                            <button className="secondary-button" onClick={onCancelPrompt}>
+                              Cancel
+                            </button>
+                            <button className="primary-button" onClick={onSavePrompt}>
+                              Save and enable
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -1132,10 +1175,9 @@ function LaunchSuccessScreen({
     }))
     .filter((item) => item.enabledSubfeatures.length > 0);
 
-  const [activeCardId, setActiveCardId] = useState<LibraryCardId | null>(launchedCards[0]?.card.id ?? null);
-  const [activeSubfeatureId, setActiveSubfeatureId] = useState<string | null>(
-    launchedCards[0]?.enabledSubfeatures[0]?.id ?? null
-  );
+  const [activeCardId, setActiveCardId] = useState<LibraryCardId | null>(null);
+  const [activeSubfeatureId, setActiveSubfeatureId] = useState<string | null>(null);
+  const [peopleViewId, setPeopleViewId] = useState<LeadViewId>("all-leads");
 
   useEffect(() => {
     if (!launchedCards.length) {
@@ -1144,10 +1186,14 @@ function LaunchSuccessScreen({
       return;
     }
 
+    if (activeCardId === null) {
+      return;
+    }
+
     const activeCardStillExists = launchedCards.some((item) => item.card.id === activeCardId);
     if (!activeCardStillExists) {
-      setActiveCardId(launchedCards[0].card.id);
-      setActiveSubfeatureId(launchedCards[0].enabledSubfeatures[0]?.id ?? null);
+      setActiveCardId(null);
+      setActiveSubfeatureId(null);
       return;
     }
 
@@ -1158,20 +1204,112 @@ function LaunchSuccessScreen({
     }
   }, [activeCardId, activeSubfeatureId, launchedCards]);
 
-  const activeCardGroup = launchedCards.find((item) => item.card.id === activeCardId) ?? launchedCards[0] ?? null;
+  const activeCardGroup = activeCardId ? launchedCards.find((item) => item.card.id === activeCardId) ?? null : null;
   const activeSubfeature =
     activeCardGroup?.enabledSubfeatures.find((item) => item.id === activeSubfeatureId) ??
     activeCardGroup?.enabledSubfeatures[0] ??
     null;
 
-  return (
-    <section className="launched-site">
-      <header className="launched-site-header">
-        <BrandMark className="launched-brand-mark" />
+  const people = useMemo(() => getDashboardPeopleForRole(role.id), [role.id]);
+  const peopleViewItems = getPeopleViewList(peopleViewId, role.id);
+  const greetingName =
+    role.id === "company-owner"
+      ? "James"
+      : role.id === "company-admin"
+        ? "Baylee"
+        : role.id === "office-owner"
+          ? "Jamie"
+          : role.id === "office-admin"
+            ? "Morgan"
+            : role.id === "lender"
+              ? "Taylor"
+              : "Baylee";
+  const hour = new Date().getHours();
+  const greetingLabel = hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening";
 
-        {launchedCards.length ? (
-          <nav className="launched-nav" aria-label="Website navigation">
-            {launchedCards.map(({ card, enabledSubfeatures }) => {
+  const newLeads = people.filter((person) => person.isNewLead).slice(0, 3);
+  const keepInTouchLeads = people.filter((person) => person.keepInTouch).slice(0, 4);
+  const opportunityLeads = people.filter((person) => person.opportunities?.length).slice(0, 4);
+  const opportunityCounts = {
+    highInterest: people.filter((person) => person.opportunities?.includes("High Interest")).length,
+    likelySellers: people.filter((person) => person.opportunities?.includes("Likely Seller")).length,
+    backToSite: people.filter((person) => person.opportunities?.includes("Back to Site")).length
+  };
+  const tasks = people
+    .flatMap((person) => person.tasks.map((task) => ({ ...task, personName: person.name })))
+    .filter((task) => !task.completed)
+    .slice(0, 5);
+  const taskCounts = {
+    Call: tasks.filter((task) => task.type === "Call").length,
+    Text: tasks.filter((task) => task.type === "Text").length,
+    Email: tasks.filter((task) => task.type === "Email").length,
+    Other: tasks.filter((task) => task.type === "Other").length
+  };
+  const appointments = people
+    .flatMap((person) =>
+      person.appointments.map((appointment) => ({
+        ...appointment,
+        personName: person.name
+      }))
+    )
+    .filter((appointment) => appointment.type === "Appointment");
+  const showings = people
+    .flatMap((person) =>
+      person.appointments.map((appointment) => ({
+        ...appointment,
+        personName: person.name
+      }))
+    )
+    .filter((appointment) => appointment.type === "Showing");
+  const transactions = people
+    .flatMap((person) =>
+      person.transaction
+        ? [
+            {
+              ...person.transaction,
+              personName: person.name
+            }
+          ]
+        : []
+    )
+    .slice(0, 4);
+  const myListings = listingInsights.slice(0, 3);
+  const launchedSubfeatureIds = new Set(
+    launchedCards.flatMap(({ enabledSubfeatures }) => enabledSubfeatures.map((subfeature) => subfeature.id))
+  );
+  const widgetAvailability = {
+    newLeads: launchedSubfeatureIds.has("people"),
+    opportunities:
+      launchedSubfeatureIds.has("showing") ||
+      launchedSubfeatureIds.has("offers") ||
+      launchedSubfeatureIds.has("transactions"),
+    keepInTouch: launchedSubfeatureIds.has("people") || launchedSubfeatureIds.has("segments"),
+    transactions: launchedSubfeatureIds.has("transactions"),
+    tasks: launchedSubfeatureIds.has("tasks"),
+    appointments: launchedSubfeatureIds.has("calendar") || launchedSubfeatureIds.has("showing"),
+    listings: launchedSubfeatureIds.has("websites"),
+    hotSheets: launchedSubfeatureIds.has("websites")
+  };
+  const dashboardRouteActive = activeCardId === null || activeSubfeature === null;
+
+  return (
+    <section className="launched-site launched-site--dashboard">
+      <header className="launched-site-header">
+        <button
+          type="button"
+          className={`launched-brand-button ${dashboardRouteActive ? "launched-brand-button--active" : ""}`}
+          onClick={() => {
+            setActiveCardId(null);
+            setActiveSubfeatureId(null);
+          }}
+          aria-label="Go to dashboard home"
+        >
+          <BrandMark className="launched-brand-mark" />
+        </button>
+
+        <nav className="launched-nav" aria-label="Website navigation">
+          {launchedCards.length
+            ? launchedCards.map(({ card, enabledSubfeatures }) => {
               const active = activeCardId === card.id;
               return (
                 <div key={card.id} className={`launched-nav-item ${active ? "launched-nav-item--active" : ""}`}>
@@ -1208,64 +1346,504 @@ function LaunchSuccessScreen({
                   ) : null}
                 </div>
               );
-            })}
-          </nav>
-        ) : null}
+            })
+            : null}
+        </nav>
       </header>
 
-      <div className="launched-site-body">
-        <article className="launched-feature-stage">
-          <div className="launched-stage-surface">
-            <p className="section-kicker">Website created</p>
-            <h1>{activeSubfeature?.name ?? "Your Lofty launch is ready"}</h1>
-            <p>
-              {activeCardGroup
-                ? `${activeCardGroup.card.label} is live with the subfeatures you enabled during setup.`
-                : `The required tabs are built, and ${role.name.toLowerCase()} users can now work inside the setup you assembled.`}
-            </p>
-            <div className="success-actions launched-stage-actions">
-              <button className="secondary-button launched-reset-button" onClick={onReset}>
-                Start another setup
-              </button>
+      <div className="dashboard-page">
+        <div className="dashboard-page-header">
+          <div>
+            <h1>
+              👋 {greetingLabel}, {greetingName}!
+            </h1>
+            <div className="dashboard-subtitle-row">
+              <span>My Dashboard</span>
+              <ChevronDown size={14} />
             </div>
           </div>
-        </article>
+          <div className="dashboard-header-actions">
+            <button className="dashboard-filter-chip">
+              Today&apos;s Priorities
+              <ChevronDown size={14} />
+            </button>
+            <button className="dashboard-grid-button" aria-label="Dashboard layout">
+              <LayoutGrid size={16} />
+            </button>
+            <button className="secondary-button" onClick={onReset}>
+              Start another setup
+            </button>
+          </div>
+        </div>
 
-        <article className="success-card">
-          <h2>What was built</h2>
-          <div className="chip-wrap">
-            {builtCards.map((card) => (
-              <span key={card.id} className="mini-chip mini-chip--success">
-                {card.label}
-              </span>
+        {dashboardRouteActive ? (
+          <DashboardHome
+            updates={dashboardUpdates}
+            newLeads={newLeads}
+            keepInTouchLeads={keepInTouchLeads}
+            opportunityLeads={opportunityLeads}
+            opportunityCounts={opportunityCounts}
+            tasks={tasks}
+            taskCounts={taskCounts}
+            appointments={appointments}
+            showings={showings}
+            transactions={transactions}
+            listings={myListings}
+            hotSheets={hotSheetItems}
+            widgetAvailability={widgetAvailability}
+          />
+        ) : activeSubfeature?.id === "people" ? (
+          <PeopleWorkspace
+            role={role}
+            peopleViewId={peopleViewId}
+            onChangeView={setPeopleViewId}
+            people={peopleViewItems}
+          />
+        ) : (
+          <SubfeatureWorkspace
+            role={role}
+            card={activeCardGroup?.card ?? null}
+            subfeature={activeSubfeature}
+            optionalCardsRemaining={optionalCardsRemaining}
+            people={people}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DashboardHome({
+  updates,
+  newLeads,
+  keepInTouchLeads,
+  opportunityLeads,
+  opportunityCounts,
+  tasks,
+  taskCounts,
+  appointments,
+  showings,
+  transactions,
+  listings,
+  hotSheets,
+  widgetAvailability
+}: {
+  updates: typeof dashboardUpdates;
+  newLeads: DashboardPerson[];
+  keepInTouchLeads: DashboardPerson[];
+  opportunityLeads: DashboardPerson[];
+  opportunityCounts: {
+    highInterest: number;
+    likelySellers: number;
+    backToSite: number;
+  };
+  tasks: Array<{ id: string; type: string; title: string; timeLabel: string; personName: string }>;
+  taskCounts: Record<"Call" | "Text" | "Email" | "Other", number>;
+  appointments: Array<{ id: string; title: string; timeLabel: string; personName: string; incomplete?: boolean }>;
+  showings: Array<{ id: string; title: string; timeLabel: string; personName: string; incomplete?: boolean }>;
+  transactions: Array<{ id: string; address: string; status: string; checklistCount: number; personName: string }>;
+  listings: typeof listingInsights;
+  hotSheets: typeof hotSheetItems;
+  widgetAvailability: {
+    newLeads: boolean;
+    opportunities: boolean;
+    keepInTouch: boolean;
+    transactions: boolean;
+    tasks: boolean;
+    appointments: boolean;
+    listings: boolean;
+    hotSheets: boolean;
+  };
+}) {
+  const [scheduleTab, setScheduleTab] = useState<"appointments" | "showings">("appointments");
+  const scheduleItems = scheduleTab === "appointments" ? appointments : showings;
+  const scheduleTotal = scheduleItems.length;
+  const scheduleIncomplete = scheduleItems.filter((item) => item.incomplete).length;
+  const untouchedCount = newLeads.filter((lead) => lead.untouched).length;
+  const transactionNearDeadline = transactions.filter((item) => item.status === "Near Deadline").length;
+  const transactionExpired = transactions.filter((item) => item.status === "Expired").length;
+
+  return (
+    <div className="dashboard-grid">
+      <DashboardWidget className="dashboard-widget--updates" title="New Updates" actions={<span>Announcements</span>}>
+        <div className="update-list">
+          {updates.map((update) => (
+            <div key={update.id} className="update-item">
+              <div className={`update-thumb update-thumb--${update.accent}`} />
+              <div className="update-copy">
+                <strong>{update.title}</strong>
+                <p>{update.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </DashboardWidget>
+
+      <DashboardWidget
+        title="Today's New Leads"
+        actions={
+          <div className="widget-icon-actions">
+            <HelpCircle size={15} />
+            <Settings2 size={15} />
+          </div>
+        }
+      >
+        {widgetAvailability.newLeads ? (
+          <>
+            <div className="dashboard-progress-track">
+              <div className="dashboard-progress-fill" style={{ width: `${Math.min((untouchedCount / Math.max(newLeads.length, 1)) * 100, 100)}%` }} />
+            </div>
+            <p className="widget-summary">Total: {newLeads.length} ({untouchedCount} untouched)</p>
+            <div className="widget-section-title">Leads waiting to be contacted</div>
+            <div className="lead-list">
+              {newLeads.map((lead) => (
+                <div key={lead.id} className="lead-list-item">
+                  <div>
+                    <strong>{lead.name}</strong>
+                    <span>{lead.leadType}</span>
+                    <small>{lead.source}</small>
+                  </div>
+                  <div className="lead-score-badge">{lead.score}</div>
+                </div>
+              ))}
+            </div>
+            <button className="widget-link-row">
+              View All
+              <ChevronRight size={14} />
+            </button>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build CRM > People to surface new lead triage here." />
+        )}
+      </DashboardWidget>
+
+      <DashboardWidget title="Today's Opportunities" actions={<HelpCircle size={15} />}>
+        {widgetAvailability.opportunities ? (
+          <>
+            <div className="widget-metric-row">
+              <WidgetMetric label="High Interest" value={opportunityCounts.highInterest} />
+              <WidgetMetric label="Likely Sellers" value={opportunityCounts.likelySellers} />
+              <WidgetMetric label="Back to Site" value={opportunityCounts.backToSite} />
+            </div>
+            <div className="opportunity-list">
+              {opportunityLeads.map((lead) => (
+                <div key={lead.id} className="opportunity-item">
+                  <div>
+                    <strong>{lead.name}</strong>
+                    <span>{lead.lastActivity}</span>
+                  </div>
+                  <div className="chip-wrap">
+                    {lead.opportunities?.map((tag) => (
+                      <span key={tag} className="mini-chip mini-chip--success">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build Sales subfeatures to surface high-intent opportunities here." />
+        )}
+      </DashboardWidget>
+
+      <DashboardWidget title="Need Keep In Touch" actions={<HelpCircle size={15} />}>
+        {widgetAvailability.keepInTouch ? (
+          <>
+            <div className="widget-metric-row">
+              <WidgetMetric label="Birthday" value={keepInTouchLeads.filter((lead) => lead.keepInTouch === "Birthday").length} />
+              <WidgetMetric label="Follow-Up" value={keepInTouchLeads.filter((lead) => lead.keepInTouch === "Follow-Up").length} />
+            </div>
+            <div className="compact-list">
+              {keepInTouchLeads.map((lead) => (
+                <div key={lead.id} className="compact-list-item">
+                  <div>
+                    <strong>{lead.name}</strong>
+                    <span>{lead.roles.join(" · ")}</span>
+                    <small>{lead.birthdayLabel ?? lead.followUpLabel}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build CRM relationship features to see follow-up reminders here." />
+        )}
+      </DashboardWidget>
+
+      <DashboardWidget
+        title="Transactions"
+        actions={
+          <div className="widget-icon-actions">
+            <HelpCircle size={15} />
+            <Settings2 size={15} />
+          </div>
+        }
+      >
+        {widgetAvailability.transactions ? (
+          <>
+            <div className="widget-metric-row">
+              <WidgetMetric label="Near Deadline" value={transactionNearDeadline} />
+              <WidgetMetric label="Expired" value={transactionExpired} />
+            </div>
+            <div className="compact-list">
+              {transactions.map((transaction) => (
+                <div key={transaction.id} className="compact-list-item">
+                  <div>
+                    <strong>{transaction.address}</strong>
+                    <span>{transaction.personName}</span>
+                    <small>{transaction.checklistCount} tasks near deadline</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build Sales > Transactions to monitor active deals here." />
+        )}
+      </DashboardWidget>
+
+      <DashboardWidget title="Today's Tasks" actions={<HelpCircle size={15} />}>
+        {widgetAvailability.tasks ? (
+          <>
+            <div className="task-chip-row">
+              <TaskPill label="Call" value={taskCounts.Call} tint="blue" />
+              <TaskPill label="Text" value={taskCounts.Text} tint="blue-light" />
+              <TaskPill label="Email" value={taskCounts.Email} tint="green" />
+              <TaskPill label="Other" value={taskCounts.Other} tint="orange" />
+            </div>
+            <div className="compact-list">
+              {tasks.map((task) => (
+                <div key={task.id} className="task-list-item">
+                  <div className="task-list-main">
+                    <span className="task-list-icon">{task.type === "Call" ? <Phone size={14} /> : task.type === "Text" ? <MessageSquare size={14} /> : task.type === "Email" ? <Mail size={14} /> : <Circle size={6} fill="currentColor" strokeWidth={0} />}</span>
+                    <div>
+                      <strong>{task.title}</strong>
+                      <span>{task.personName}</span>
+                    </div>
+                  </div>
+                  <small>{task.timeLabel}</small>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build CRM > Tasks to see your daily action list here." />
+        )}
+      </DashboardWidget>
+
+      <DashboardWidget
+        title="Appointments"
+        actions={
+          <div className="widget-tab-switch">
+            <button
+              className={scheduleTab === "appointments" ? "widget-tab-switch-button widget-tab-switch-button--active" : "widget-tab-switch-button"}
+              onClick={() => setScheduleTab("appointments")}
+            >
+              Appointments
+            </button>
+            <button
+              className={scheduleTab === "showings" ? "widget-tab-switch-button widget-tab-switch-button--active" : "widget-tab-switch-button"}
+              onClick={() => setScheduleTab("showings")}
+            >
+              Showings
+            </button>
+          </div>
+        }
+      >
+        {widgetAvailability.appointments ? (
+          <>
+            <div className="dashboard-progress-track">
+              <div className="dashboard-progress-fill dashboard-progress-fill--green" style={{ width: `${Math.min((scheduleIncomplete / Math.max(scheduleTotal, 1)) * 100, 100)}%` }} />
+            </div>
+            <p className="widget-summary">
+              Total: {scheduleTotal} ({scheduleIncomplete} incomplete)
+            </p>
+            <div className="compact-list">
+              {scheduleItems.map((item) => (
+                <div key={item.id} className="compact-list-item">
+                  <div>
+                    <strong>{item.personName}</strong>
+                    <span>{item.timeLabel}</span>
+                    <small>{item.title}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build Calendar or Showing tools to see meetings here." />
+        )}
+      </DashboardWidget>
+
+      <DashboardWidget title="My Listings">
+        {widgetAvailability.listings ? (
+          <div className="compact-list">
+            {listings.map((listing) => (
+              <div key={listing.id} className="compact-list-item">
+                <div>
+                  <strong>{listing.title}</strong>
+                  <span>{listing.location}</span>
+                  <small>{listing.trend}</small>
+                </div>
+              </div>
             ))}
           </div>
-        </article>
+        ) : (
+          <EmptyWidgetState message="Build the website tab to bring listing activity into the dashboard." />
+        )}
+      </DashboardWidget>
 
+      <DashboardWidget title="Hot Sheets">
+        {widgetAvailability.hotSheets ? (
+          <div className="compact-list">
+            {hotSheets.map((sheet) => (
+              <div key={sheet.id} className="compact-list-item compact-list-item--split">
+                <strong>{sheet.label}</strong>
+                <span className="listing-count-badge">+{sheet.count} Listings</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyWidgetState message="Build Content > Websites to surface listing watchlists here." />
+        )}
+      </DashboardWidget>
+    </div>
+  );
+}
+
+function PeopleWorkspace({
+  role,
+  peopleViewId,
+  onChangeView,
+  people
+}: {
+  role: RoleDefinition;
+  peopleViewId: LeadViewId;
+  onChangeView: (viewId: LeadViewId) => void;
+  people: DashboardPerson[];
+}) {
+  const views: Array<{ id: LeadViewId; label: string }> = [
+    { id: "all-leads", label: "All Leads" },
+    { id: "my-leads", label: "My Leads" },
+    { id: "lead-pond", label: "Lead Pond" },
+    { id: "partial-leads", label: "Partial Leads" }
+  ];
+
+  return (
+    <section className="people-workspace">
+      <div className="people-workspace-header">
+        <div>
+          <p className="section-kicker">CRM</p>
+          <h2>People</h2>
+          <p>
+            Based on the Lofty People Page, this view keeps lead source, stage, segments, and recent activity together
+            so the next action is obvious.
+          </p>
+        </div>
+        <div className="chip-wrap">
+          <span className="mini-chip mini-chip--success">{people.length} visible leads</span>
+          <span className="mini-chip">{role.name}</span>
+        </div>
+      </div>
+
+      <div className="people-view-tabs">
+        {views.map((view) => (
+          <button
+            key={view.id}
+            className={peopleViewId === view.id ? "people-view-tab people-view-tab--active" : "people-view-tab"}
+            onClick={() => onChangeView(view.id)}
+          >
+            {view.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="people-grid">
+        {people.map((person) => (
+          <article key={person.id} className="people-card">
+            <div className="people-card-header">
+              <div>
+                <strong>{person.name}</strong>
+                <span>
+                  {person.roles.join(" · ")} · {person.source}
+                </span>
+              </div>
+              <div className="lead-score-badge">{person.score}</div>
+            </div>
+            <div className="chip-wrap">
+              <span className="mini-chip">{person.stage}</span>
+              {person.segments?.slice(0, 2).map((segment) => (
+                <span key={segment} className="mini-chip">
+                  {segment}
+                </span>
+              ))}
+            </div>
+            <p className="people-card-activity">{person.lastActivity ?? "No recent activity recorded."}</p>
+            <div className="people-card-footer">
+              <span>{person.savedSearch ?? person.followUpLabel ?? person.birthdayLabel ?? "Lead profile ready"}</span>
+              <button className="widget-link-row">
+                Open lead
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SubfeatureWorkspace({
+  role,
+  card,
+  subfeature,
+  optionalCardsRemaining,
+  people
+}: {
+  role: RoleDefinition;
+  card: LibraryCardDefinition | null;
+  subfeature: LibraryCardDefinition["subfeatures"][number] | null;
+  optionalCardsRemaining: LibraryCardDefinition[];
+  people: DashboardPerson[];
+}) {
+  const activeCount =
+    subfeature?.id === "tasks"
+      ? people.flatMap((person) => person.tasks).length
+      : subfeature?.id === "calendar" || subfeature?.id === "showing"
+        ? people.flatMap((person) => person.appointments).length
+        : subfeature?.id === "transactions"
+          ? people.filter((person) => person.transaction).length
+          : people.length;
+
+  return (
+    <section className="subfeature-workspace">
+      <div className="subfeature-workspace-hero">
+        <p className="section-kicker">{card?.label ?? "Workspace"}</p>
+        <h2>{subfeature?.name ?? "Ready"}</h2>
+        <p>{subfeature?.setupSummary ?? `${role.name} users can now work inside the tabs you launched.`}</p>
+      </div>
+
+      <div className="subfeature-workspace-grid">
         <article className="success-card">
-          <h2>Enabled navigation</h2>
-          <div className="chip-wrap">
-            {launchedCards.length ? (
-              launchedCards.flatMap(({ card, enabledSubfeatures }) =>
-                enabledSubfeatures.map((subfeature) => (
-                  <span key={`${card.id}-${subfeature.id}`} className="mini-chip mini-chip--success">
-                    {card.label}: {subfeature.name}
-                  </span>
-                ))
-              )
-            ) : (
-              <span className="muted-copy">No subfeatures were enabled for navigation.</span>
-            )}
+          <h2>What this page is for</h2>
+          <p>{subfeature?.example ?? "This page is ready to use inside your launched Lofty workspace."}</p>
+        </article>
+        <article className="success-card">
+          <h2>Available records</h2>
+          <div className="launch-stat">
+            <span>Live items</span>
+            <strong>{activeCount}</strong>
           </div>
         </article>
-
         <article className="success-card">
           <h2>Still optional</h2>
           <div className="chip-wrap">
             {optionalCardsRemaining.length ? (
-              optionalCardsRemaining.map((card) => (
-                <span key={card.id} className="mini-chip mini-chip--warning">
-                  {card.label}
+              optionalCardsRemaining.map((item) => (
+                <span key={item.id} className="mini-chip mini-chip--warning">
+                  {item.label}
                 </span>
               ))
             ) : (
@@ -1275,6 +1853,55 @@ function LaunchSuccessScreen({
         </article>
       </div>
     </section>
+  );
+}
+
+function DashboardWidget({
+  title,
+  actions,
+  children,
+  className = ""
+}: {
+  title: string;
+  actions?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <article className={`dashboard-widget ${className}`.trim()}>
+      <div className="dashboard-widget-header">
+        <h2>{title}</h2>
+        {actions ? <div className="dashboard-widget-actions">{actions}</div> : null}
+      </div>
+      {children}
+    </article>
+  );
+}
+
+function WidgetMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="widget-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function TaskPill({ label, value, tint }: { label: string; value: number; tint: "blue" | "blue-light" | "green" | "orange" }) {
+  return (
+    <div className={`task-pill task-pill--${tint}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function EmptyWidgetState({ message }: { message: string }) {
+  return (
+    <div className="widget-empty-state">
+      <Bell size={18} />
+      <p>{message}</p>
+    </div>
   );
 }
 

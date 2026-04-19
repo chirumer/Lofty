@@ -83,6 +83,78 @@ export interface PresetDefinition {
 export type PromptValues = Record<string, string | boolean>;
 export type PromptConfigStore = Record<string, PromptValues>;
 export type CardToggleStore = Record<string, boolean>;
+export type LeadTaskType = "Call" | "Text" | "Email" | "Other";
+export type AppointmentType = "Appointment" | "Showing";
+export type OpportunityType = "High Interest" | "Likely Seller" | "Back to Site";
+export type KeepInTouchType = "Birthday" | "Follow-Up";
+export type LeadViewId = "all-leads" | "my-leads" | "lead-pond" | "partial-leads";
+
+export interface LeadTask {
+  id: string;
+  type: LeadTaskType;
+  title: string;
+  timeLabel: string;
+  completed?: boolean;
+}
+
+export interface LeadAppointment {
+  id: string;
+  type: AppointmentType;
+  title: string;
+  timeLabel: string;
+  incomplete?: boolean;
+}
+
+export interface LeadTransaction {
+  id: string;
+  address: string;
+  status: "Near Deadline" | "Expired";
+  checklistCount: number;
+}
+
+export interface DashboardPerson {
+  id: string;
+  name: string;
+  leadType: string;
+  source: string;
+  stage: string;
+  score: number;
+  roles: string[];
+  views: LeadViewId[];
+  untouched?: boolean;
+  isNewLead?: boolean;
+  keepInTouch?: KeepInTouchType;
+  birthdayLabel?: string;
+  followUpLabel?: string;
+  opportunities?: OpportunityType[];
+  segments?: string[];
+  savedSearch?: string;
+  location?: string;
+  lastActivity?: string;
+  tasks: LeadTask[];
+  appointments: LeadAppointment[];
+  transaction?: LeadTransaction | null;
+}
+
+export interface DashboardUpdate {
+  id: string;
+  title: string;
+  description: string;
+  accent: string;
+}
+
+export interface ListingInsight {
+  id: string;
+  title: string;
+  location: string;
+  trend?: string;
+}
+
+export interface HotSheetItem {
+  id: string;
+  label: string;
+  count: number;
+}
 
 export interface PromptTarget {
   cardId: LibraryCardId;
