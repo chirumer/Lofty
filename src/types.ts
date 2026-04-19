@@ -180,3 +180,18 @@ export interface OnboardingSnapshot {
   pendingPrompt: PromptTarget | null;
   launchReady: boolean;
 }
+
+export interface RoleDashboardPreferences {
+  builtCards: LibraryCardId[];
+  enabledSubfeatures: Partial<Record<LibraryCardId, string[]>>;
+  subfeatureConfigOverrides?: Partial<Record<LibraryCardId, PromptConfigStore>>;
+}
+
+export interface LaunchedNavItem {
+  label: string;
+  href?: string;
+  icon?: string;
+  isAi?: boolean;
+  view?: LaunchedShellView;
+  submenu?: LaunchedNavItem[];
+}
