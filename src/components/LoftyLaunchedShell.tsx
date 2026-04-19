@@ -212,12 +212,14 @@ function isExternalHref(href: string) {
   return href.startsWith("http://") || href.startsWith("https://");
 }
 
-function dropdownMaskStyle(isOpen: boolean) {
+function dropdownMaskStyle() {
   return {
-    display: isOpen ? "block" : "none",
+    display: "none",
     pointerEvents: "none" as const
   };
 }
+
+const HOVER_CLOSE_DELAY_MS = 80;
 
 function MenuItemAction({
   children,
@@ -266,23 +268,52 @@ function MenuItemAction({
 function MenuSubitem({
   activeView,
   item,
+  onNavigateHome,
   onNavigate
 }: {
   activeView: LaunchedShellView;
   item: ShellSubmenuItem;
+  onNavigateHome: () => void;
   onNavigate: (view: LaunchedShellView) => void;
 }) {
   const [isNestedOpen, setIsNestedOpen] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
   const isActive = item.view ? activeView === item.view : false;
+
+  function clearCloseTimer() {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }
+
+  function openNestedMenu() {
+    clearCloseTimer();
+    setIsNestedOpen(true);
+  }
+
+  function closeNestedMenu() {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setIsNestedOpen(false);
+      closeTimerRef.current = null;
+    }, HOVER_CLOSE_DELAY_MS);
+  }
+
+  useEffect(() => {
+    return () => {
+      clearCloseTimer();
+    };
+  }, []);
 
   if (!item.submenu) {
     return (
       <MenuItemAction
         {...attrs.dropdown}
         className={`crm-only-header-menu__item crm-only-header-menu__subitem ${isActive ? "is-active" : ""}`.trim()}
-        href={item.href}
+        href={item.href && item.href !== "/" ? item.href : undefined}
         needicon=""
-        onAction={item.view ? () => onNavigate(item.view!) : undefined}
+        onAction={item.view ? () => onNavigate(item.view!) : item.href === "/" ? onNavigateHome : undefined}
       >
         {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
         <span {...attrs.dropdown} className="crm-only-header-menu__title">
@@ -296,15 +327,16 @@ function MenuSubitem({
     <div
       {...attrs.dropdown}
       className="com-dropdownbox menu-dropdown-header crm-only-header-menu__subitem lofty-nav-submenu"
-      onMouseEnter={() => setIsNestedOpen(true)}
-      onMouseLeave={() => setIsNestedOpen(false)}
+      onMouseEnter={openNestedMenu}
+      onMouseLeave={closeNestedMenu}
     >
-      <div className="com-dropdown-mask" style={dropdownMaskStyle(isNestedOpen)}></div>
+      <div className="com-dropdown-mask" style={dropdownMaskStyle()}></div>
       <div className="com-dropdown-body">
         <MenuItemAction
           {...attrs.dropdown}
           className="crm-only-header-menu__item hoverCursor lofty-nav-submenu__trigger"
-          href={item.href}
+          href={item.href && item.href !== "/" ? item.href : undefined}
+          onAction={item.href === "/" ? onNavigateHome : undefined}
         >
           {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
           <span {...attrs.dropdown} className="crm-only-header-menu__title">
@@ -313,15 +345,21 @@ function MenuSubitem({
           <span {...attrs.dropdown} className="icon2017 icon-arrow_08_right lofty-nav-submenu__arrow"></span>
         </MenuItemAction>
       </div>
-      <div className="com-dropdown lofty-nav-submenu__flyout" style={{ display: isNestedOpen ? "block" : "none" }}>
+      <div
+        className="com-dropdown lofty-nav-submenu__flyout"
+        style={{ display: isNestedOpen ? "block" : "none" }}
+        onMouseEnter={openNestedMenu}
+        onMouseLeave={closeNestedMenu}
+      >
         <div className="com-dropdown-content crm-only-header-menu__dropdown">
           {item.submenu.map((subitem) => (
             <MenuItemAction
               key={subitem.label}
               {...attrs.dropdown}
               className="crm-only-header-menu__item crm-only-header-menu__subitem"
-              href={subitem.href}
+              href={subitem.href && subitem.href !== "/" ? subitem.href : undefined}
               needicon=""
+              onAction={subitem.href === "/" ? onNavigateHome : undefined}
             >
               <span {...attrs.dropdown} className="crm-only-header-menu__title">
                 {subitem.label}
@@ -338,6 +376,7 @@ function HeaderMenuCell({
   activeView,
   index,
   item,
+  onNavigateHome,
   openMenu,
   setOpenMenu,
   onNavigate
@@ -345,12 +384,40 @@ function HeaderMenuCell({
   activeView: LaunchedShellView;
   index: number;
   item: ShellHeaderItem;
+  onNavigateHome: () => void;
   openMenu: string | null;
   setOpenMenu: React.Dispatch<React.SetStateAction<string | null>>;
   onNavigate: (view: LaunchedShellView) => void;
 }) {
   const isOpen = openMenu === item.label;
   const isActive = activeView === "crm-people" && item.label === "CRM";
+  const closeTimerRef = useRef<number | null>(null);
+
+  function clearCloseTimer() {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }
+
+  function openMenuWithDelay() {
+    clearCloseTimer();
+    setOpenMenu(item.label);
+  }
+
+  function closeMenuWithDelay() {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setOpenMenu((current) => (current === item.label ? null : current));
+      closeTimerRef.current = null;
+    }, HOVER_CLOSE_DELAY_MS);
+  }
+
+  useEffect(() => {
+    return () => {
+      clearCloseTimer();
+    };
+  }, []);
 
   if (!item.submenu) {
     return (
@@ -359,8 +426,9 @@ function HeaderMenuCell({
           {...attrs.dropdown}
           {...attrs.menu}
           className={`crm-only-header-menu__item isTop ${isActive ? "is-active " : ""}${item.isAi ? "flex lofty-ai-menu" : ""}`.trim()}
-          href={item.href}
+          href={item.href && item.href !== "/" ? item.href : undefined}
           data-v-f4100c9e=""
+          onAction={item.href === "/" ? onNavigateHome : undefined}
         >
           {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
           <span {...attrs.dropdown} className="crm-only-header-menu__title isTop">
@@ -377,26 +445,38 @@ function HeaderMenuCell({
       id={`com-overflow-display-cell-${index}`}
       data-index={index}
       className="display-cell"
-      onMouseEnter={() => setOpenMenu(item.label)}
-      onMouseLeave={() => setOpenMenu((current) => (current === item.label ? null : current))}
+      onMouseEnter={openMenuWithDelay}
+      onMouseLeave={closeMenuWithDelay}
     >
-      <div {...attrs.dropdown} {...attrs.menu} data-v-f4100c9e="" className="com-dropdownbox menu-dropdown-header">
-        <div className="com-dropdown-mask" style={dropdownMaskStyle(isOpen)}></div>
-        <div className="com-dropdown-body">
-          <MenuItemAction
-            {...attrs.dropdown}
-            className={`crm-only-header-menu__item isTop ${isActive ? "is-active " : ""}${item.href ? "hoverCursor" : "cursor-default"}`.trim()}
-            href={item.href}
-          >
-            <span {...attrs.dropdown} className="crm-only-header-menu__title isTop">
-              {item.label}
-            </span>
+        <div {...attrs.dropdown} {...attrs.menu} data-v-f4100c9e="" className="com-dropdownbox menu-dropdown-header">
+          <div className="com-dropdown-mask" style={dropdownMaskStyle()}></div>
+          <div className="com-dropdown-body">
+            <MenuItemAction
+              {...attrs.dropdown}
+              className={`crm-only-header-menu__item isTop ${isActive ? "is-active " : ""}${item.href ? "hoverCursor" : "cursor-default"}`.trim()}
+              href={item.href && item.href !== "/" ? item.href : undefined}
+              onAction={item.href === "/" ? onNavigateHome : undefined}
+            >
+              <span {...attrs.dropdown} className="crm-only-header-menu__title isTop">
+                {item.label}
+              </span>
           </MenuItemAction>
         </div>
-        <div className="com-dropdown" style={{ display: isOpen ? "block" : "none" }}>
-          <div className="com-dropdown-content crm-only-header-menu__dropdown">
+        <div
+          className="com-dropdown"
+          style={{ display: isOpen ? "block" : "none" }}
+          onMouseEnter={openMenuWithDelay}
+          onMouseLeave={closeMenuWithDelay}
+        >
+            <div className="com-dropdown-content crm-only-header-menu__dropdown">
             {item.submenu.map((subitem) => (
-              <MenuSubitem key={subitem.label} activeView={activeView} item={subitem} onNavigate={onNavigate} />
+              <MenuSubitem
+                key={subitem.label}
+                activeView={activeView}
+                item={subitem}
+                onNavigateHome={onNavigateHome}
+                onNavigate={onNavigate}
+              />
             ))}
           </div>
         </div>
@@ -440,6 +520,7 @@ export default function LoftyLaunchedShell({
   children,
   activeProfileEmail,
   activeProfileName,
+  onStartAnotherSetup,
   onNavigateHome,
   onNavigateMessages,
   onNavigateNegotiation,
@@ -450,6 +531,7 @@ export default function LoftyLaunchedShell({
   children: ReactNode;
   activeProfileEmail: string;
   activeProfileName: string;
+  onStartAnotherSetup: () => void;
   onNavigateHome: () => void;
   onNavigateMessages: () => void;
   onNavigateNegotiation: () => void;
@@ -489,6 +571,14 @@ export default function LoftyLaunchedShell({
     onNavigateNegotiation();
   }
 
+  function handleNavigateHome() {
+    setOpenMenu(null);
+    setUserMenuOpen(false);
+    setActiveUtilityId(null);
+    setSearchOpen(false);
+    onNavigateHome();
+  }
+
   function handleUtilityItemClick(item: UtilityItem) {
     if (item.view) {
       setActiveUtilityId(null);
@@ -504,6 +594,11 @@ export default function LoftyLaunchedShell({
     }
 
     setActiveUtilityId((current) => (current === item.id ? null : item.id));
+  }
+
+  function handleStartAnotherSetup() {
+    setUserMenuOpen(false);
+    onStartAnotherSetup();
   }
 
   useEffect(() => {
@@ -551,7 +646,7 @@ export default function LoftyLaunchedShell({
                     {...attrs.header}
                     className={`logo header-logo router-link-active lofty-reset-button ${activeView === "home" ? "launched-brand-button--active" : ""}`.trim()}
                     type="button"
-                    onClick={onNavigateHome}
+                    onClick={handleNavigateHome}
                   >
                     <img {...attrs.header} src="/frozen-lofty/Lofty_files/Lofty_Logo.png" alt="logo" style={{ width: "100px" }} />
                   </button>
@@ -574,6 +669,7 @@ export default function LoftyLaunchedShell({
                             activeView={activeView}
                             index={index}
                             item={item}
+                            onNavigateHome={handleNavigateHome}
                             openMenu={openMenu}
                             setOpenMenu={setOpenMenu}
                             onNavigate={handleNavigate}
@@ -658,10 +754,25 @@ export default function LoftyLaunchedShell({
         </section>
 
         <div {...attrs.rightPanel} {...attrs.shell} className="right-panel-wrapper">
-          <div {...attrs.utility} {...attrs.rightPanel} className="right-menu-wrapper">
+            <div {...attrs.utility} {...attrs.rightPanel} className="right-menu-wrapper">
             <div {...attrs.utility} className="right-menu-user-box">
-              <div {...attrs.user} {...attrs.utility} className="com-dropdownbox">
-                <div className="com-dropdown-mask" style={dropdownMaskStyle(userMenuOpen)}></div>
+              {userMenuOpen ? (
+                <button
+                  className="lofty-reset-button lofty-user-menu-backdrop"
+                  type="button"
+                  aria-label="Close user menu"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  onClick={() => setUserMenuOpen(false)}
+                />
+              ) : null}
+              <div
+                {...attrs.user}
+                {...attrs.utility}
+                className="com-dropdownbox"
+                style={userMenuOpen ? { zIndex: 60 } : undefined}
+              >
+                <div className="com-dropdown-mask" style={dropdownMaskStyle()}></div>
                 <button
                   {...attrs.user}
                   className="com-dropdown-body lofty-reset-button"
@@ -766,6 +877,21 @@ export default function LoftyLaunchedShell({
                             </div>
                           </li>
                         ))}
+                        <li {...attrs.user} className="list-item">
+                          <div {...attrs.user} className="flex-line">
+                            <button
+                              {...attrs.user}
+                              className="lofty-reset-button lofty-user-menu-action"
+                              type="button"
+                              onClick={handleStartAnotherSetup}
+                            >
+                              <span {...attrs.user}>
+                                <i {...attrs.user} className="icon2017 icon-re_01"></i>
+                                <span {...attrs.user}>Start another setup</span>
+                              </span>
+                            </button>
+                          </div>
+                        </li>
                         <li {...attrs.user} className="list-item logout">
                           <div {...attrs.user} className="flex-line">
                             <span {...attrs.user}>

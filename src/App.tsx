@@ -1284,6 +1284,7 @@ function LaunchSuccessScreen({
         activeView={activeView}
         activeProfileEmail={activeDemoAccount.email}
         activeProfileName={activeDemoAccount.name}
+        onStartAnotherSetup={onReset}
         onNavigateHome={() => setActiveView("home")}
         onNavigateMessages={() => setActiveView("messages")}
         onNavigateNegotiation={() => setActiveView("negotiation")}
@@ -1311,9 +1312,6 @@ function LaunchSuccessScreen({
                 <button className="dashboard-grid-button" aria-label="Dashboard layout">
                   <LayoutGrid size={16} />
                 </button>
-                <button className="secondary-button" onClick={onReset}>
-                  Start another setup
-                </button>
               </div>
             </div>
 
@@ -1336,11 +1334,6 @@ function LaunchSuccessScreen({
         </div>
         ) : activeView === "crm-people" ? (
           <div className="lofty-shell-section">
-            <div className="lofty-shell-toolbar">
-              <button className="secondary-button" onClick={onReset}>
-                Start another setup
-              </button>
-            </div>
             <div className="dashboard-page">
               <PeopleWorkspace
                 role={role}
@@ -1352,11 +1345,6 @@ function LaunchSuccessScreen({
           </div>
         ) : activeView === "messages" ? (
           <>
-            <div className="lofty-shell-toolbar">
-              <button className="secondary-button" onClick={onReset}>
-                Start another setup
-              </button>
-            </div>
             <MessagesWorkspace
               profile={activeDemoProfile}
               feature={negotiationFeature}
@@ -1365,11 +1353,6 @@ function LaunchSuccessScreen({
           </>
         ) : (
           <>
-            <div className="lofty-shell-toolbar">
-              <button className="secondary-button" onClick={onReset}>
-                Start another setup
-              </button>
-            </div>
             <NegotiationWorkspace
               profile={activeDemoProfile}
               feature={negotiationFeature}
