@@ -69,6 +69,7 @@ import type {
   CardToggleStore,
   DashboardPerson,
   LaunchedListing,
+  LaunchedMlsFeed,
   LaunchedListingType,
   LaunchedShellView,
   LeadViewId,
@@ -99,10 +100,15 @@ import dialog2Image from "../dialog2.png";
 
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
 
-type ListingFormValues = {
+type MlsFeedFormValues = {
   sourceName: string;
   agentId: string;
   referenceId: string;
+  enabled: boolean;
+};
+
+type PocketListingFormValues = {
+  sourceName: string;
   contactName: string;
   availability: string;
   headline: string;
@@ -121,18 +127,30 @@ type ListingFormValues = {
   enabled: boolean;
 };
 
-type ListingEditorState = {
-  mode: "create" | "edit";
-  type: LaunchedListingType;
-  listingId?: string;
-} | null;
+type ContentEditorState =
+  | {
+      mode: "create" | "edit";
+      kind: "mls-feed";
+      feedId?: string;
+    }
+  | {
+      mode: "create" | "edit";
+      kind: "pocket-listing";
+      listingId?: string;
+    }
+  | null;
 
 type WebsiteGuideStep = "idle" | "blocked" | "highlight-listings";
 
-const emptyListingFormValues: ListingFormValues = {
+const emptyMlsFeedFormValues: MlsFeedFormValues = {
   sourceName: "",
   agentId: "",
   referenceId: "",
+  enabled: true
+};
+
+const emptyPocketListingFormValues: PocketListingFormValues = {
+  sourceName: "",
   contactName: "",
   availability: "",
   headline: "",
@@ -161,13 +179,32 @@ const emptySnapshot: OnboardingSnapshot = {
   templatePreset: null,
   pendingPrompt: null,
   launchReady: false,
+  launchedMlsFeeds: [],
   launchedListings: []
 };
 
 function normalizeSnapshot(snapshot: OnboardingSnapshot): OnboardingSnapshot {
-  return {
+  const launchedListings = snapshot.launchedListings ?? [];
+  const migratedSnapshot: OnboardingSnapshot = {
     ...snapshot,
-    launchReady: deriveLaunchReady(snapshot)
+    launchedMlsFeeds:
+      snapshot.launchedMlsFeeds && snapshot.launchedMlsFeeds.length
+        ? snapshot.launchedMlsFeeds
+        : launchedListings
+            .filter((listing) => listing.type === "mlx")
+            .map((listing) => ({
+              id: listing.id,
+              sourceName: listing.sourceName,
+              agentId: listing.agentId ?? "",
+              referenceId: listing.referenceId ?? "",
+              enabled: listing.enabled
+            })),
+    launchedListings: launchedListings.filter((listing) => listing.type === "pocket")
+  };
+
+  return {
+    ...migratedSnapshot,
+    launchReady: deriveLaunchReady(migratedSnapshot)
   };
 }
 
@@ -183,12 +220,26 @@ function loadSnapshot(): OnboardingSnapshot {
   }
 }
 
-function buildListingFormValues(listingType: LaunchedListingType, listing?: LaunchedListing): ListingFormValues {
+function buildMlsFeedFormValues(feed?: LaunchedMlsFeed): MlsFeedFormValues {
+  if (feed) {
+    return {
+      sourceName: feed.sourceName,
+      agentId: feed.agentId,
+      referenceId: feed.referenceId,
+      enabled: feed.enabled
+    };
+  }
+
+  return {
+    ...emptyMlsFeedFormValues,
+    sourceName: "Phoenix Valley MLS"
+  };
+}
+
+function buildPocketListingFormValues(listing?: LaunchedListing): PocketListingFormValues {
   if (listing) {
     return {
       sourceName: listing.sourceName,
-      agentId: listing.agentId ?? "",
-      referenceId: listing.referenceId ?? "",
       contactName: listing.contactName ?? "",
       availability: listing.availability ?? "",
       headline: listing.headline,
@@ -209,26 +260,34 @@ function buildListingFormValues(listingType: LaunchedListingType, listing?: Laun
   }
 
   return {
-    ...emptyListingFormValues,
-    sourceName: listingType === "mlx" ? "Phoenix Valley MLX" : "Private Client Circle"
+    ...emptyPocketListingFormValues,
+    sourceName: "Private Client Circle"
   };
 }
 
-function createListingId(listingType: LaunchedListingType) {
-  return `${listingType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+function createMlsFeedId() {
+  return `mlx-feed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function buildListingFromForm(
-  listingType: LaunchedListingType,
-  values: ListingFormValues,
-  existingListingId?: string
-): LaunchedListing {
+function createPocketListingId() {
+  return `pocket-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildMlsFeedFromForm(values: MlsFeedFormValues, existingFeedId?: string): LaunchedMlsFeed {
   return {
-    id: existingListingId ?? createListingId(listingType),
-    type: listingType,
+    id: existingFeedId ?? createMlsFeedId(),
     sourceName: values.sourceName.trim(),
-    agentId: values.agentId.trim() || undefined,
-    referenceId: values.referenceId.trim() || undefined,
+    agentId: values.agentId.trim(),
+    referenceId: values.referenceId.trim(),
+    enabled: values.enabled
+  };
+}
+
+function buildPocketListingFromForm(values: PocketListingFormValues, existingListingId?: string): LaunchedListing {
+  return {
+    id: existingListingId ?? createPocketListingId(),
+    type: "pocket",
+    sourceName: values.sourceName.trim(),
     contactName: values.contactName.trim() || undefined,
     availability: values.availability.trim() || undefined,
     headline: values.headline.trim(),
@@ -248,12 +307,22 @@ function buildListingFromForm(
   };
 }
 
-function getDemoListingFormValues(listingType: LaunchedListingType, existingCount: number): ListingFormValues {
-  const sourceList = listingType === "mlx" ? demoMlxListings : demoPocketListings;
-  const demoListing = sourceList[existingCount % sourceList.length];
+function getDemoMlsFeedFormValues(existingCount: number): MlsFeedFormValues {
+  const demoListing = demoMlxListings[existingCount % demoMlxListings.length];
+  return {
+    ...emptyMlsFeedFormValues,
+    sourceName: demoListing.sourceName.replace("MLX", "MLS"),
+    agentId: demoListing.agentId ?? "",
+    referenceId: demoListing.referenceId ?? "",
+    enabled: true
+  };
+}
+
+function getDemoPocketListingFormValues(existingCount: number): PocketListingFormValues {
+  const demoListing = demoPocketListings[existingCount % demoPocketListings.length];
 
   return {
-    ...emptyListingFormValues,
+    ...emptyPocketListingFormValues,
     ...demoListing,
     price: String(demoListing.price),
     bedrooms: String(demoListing.bedrooms),
@@ -264,14 +333,24 @@ function getDemoListingFormValues(listingType: LaunchedListingType, existingCoun
 }
 
 function getListingTypeLabel(listingType: LaunchedListingType) {
-  return listingType === "mlx" ? "MLX listing" : "Pocket listing";
+  return listingType === "mlx" ? "MLS feed" : "Pocket listing";
 }
 
-function validateListingForm(listingType: LaunchedListingType, values: ListingFormValues) {
+function validateMlsFeedForm(values: MlsFeedFormValues) {
   const requiredFields = [
     ["sourceName", values.sourceName],
-    [listingType === "mlx" ? "agentId" : "contactName", listingType === "mlx" ? values.agentId : values.contactName],
-    [listingType === "mlx" ? "referenceId" : "availability", listingType === "mlx" ? values.referenceId : values.availability],
+    ["agentId", values.agentId],
+    ["referenceId", values.referenceId]
+  ];
+
+  return requiredFields.every(([, value]) => String(value ?? "").trim() !== "");
+}
+
+function validatePocketListingForm(values: PocketListingFormValues) {
+  const requiredFields = [
+    ["sourceName", values.sourceName],
+    ["contactName", values.contactName],
+    ["availability", values.availability],
     ["headline", values.headline],
     ["address", values.address],
     ["city", values.city],
@@ -288,6 +367,22 @@ function validateListingForm(listingType: LaunchedListingType, values: ListingFo
   ];
 
   return requiredFields.every(([, value]) => String(value ?? "").trim() !== "");
+}
+
+function deriveListingsFromMlsFeeds(feeds: LaunchedMlsFeed[]): LaunchedListing[] {
+  return feeds.map((feed, index) => {
+    const demoListing = demoMlxListings[index % demoMlxListings.length];
+
+    return {
+      ...demoListing,
+      id: `mlx-derived-${feed.id}`,
+      type: "mlx",
+      sourceName: feed.sourceName,
+      agentId: feed.agentId,
+      referenceId: feed.referenceId,
+      enabled: feed.enabled
+    };
+  });
 }
 
 function createBuilderSnapshot(roleId: RoleId, mode: "empty" | "auto"): OnboardingSnapshot {
@@ -1405,7 +1500,7 @@ function LaunchSuccessScreen({
   const [peopleViewId, setPeopleViewId] = useState<LeadViewId>("all-leads");
   const [activeDemoProfile, setActiveDemoProfile] = useState<NegotiationShellProfile>("seller_agent");
   const [showProfileSwitch, setShowProfileSwitch] = useState(false);
-  const [listingEditor, setListingEditor] = useState<ListingEditorState>(null);
+  const [contentEditor, setContentEditor] = useState<ContentEditorState>(null);
   const [showIdxPreview, setShowIdxPreview] = useState(false);
   const [websiteGuideStep, setWebsiteGuideStep] = useState<WebsiteGuideStep>("idle");
   const negotiationFeature = useNegotiationFeatureState(DEMO_LISTING_ID);
@@ -1466,8 +1561,13 @@ function LaunchSuccessScreen({
   const launchedSubfeatureIds = new Set(
     launchedCards.flatMap(({ enabledSubfeatures }) => enabledSubfeatures.map((subfeature) => subfeature.id))
   );
-  const launchedListings = snapshot.launchedListings ?? [];
-  const enabledListings = launchedListings.filter((listing) => listing.enabled);
+  const launchedMlsFeeds = snapshot.launchedMlsFeeds ?? [];
+  const launchedPocketListings = snapshot.launchedListings ?? [];
+  const derivedMlsListings = useMemo(() => deriveListingsFromMlsFeeds(launchedMlsFeeds), [launchedMlsFeeds]);
+  const enabledListings = [
+    ...derivedMlsListings.filter((listing) => listing.enabled),
+    ...launchedPocketListings.filter((listing) => listing.enabled)
+  ];
   const canOpenListings = launchedSubfeatureIds.has("my-listings");
   const canOpenWebsites = launchedSubfeatureIds.has("websites");
   const widgetAvailability = {
@@ -1505,15 +1605,41 @@ function LaunchSuccessScreen({
     }
   }, [activeView, websiteGuideStep]);
 
-  function updateLaunchedListings(updater: (current: LaunchedListing[]) => LaunchedListing[]) {
+  function updateLaunchedMlsFeeds(updater: (current: LaunchedMlsFeed[]) => LaunchedMlsFeed[]) {
+    onUpdateSnapshot((current) => ({
+      ...current,
+      launchedMlsFeeds: updater(current.launchedMlsFeeds ?? [])
+    }));
+  }
+
+  function updatePocketListings(updater: (current: LaunchedListing[]) => LaunchedListing[]) {
     onUpdateSnapshot((current) => ({
       ...current,
       launchedListings: updater(current.launchedListings ?? [])
     }));
   }
 
-  function handleSaveListing(nextListing: LaunchedListing) {
-    updateLaunchedListings((current) => {
+  function handleSaveMlsFeed(nextFeed: LaunchedMlsFeed) {
+    updateLaunchedMlsFeeds((current) => {
+      const existingIndex = current.findIndex((feed) => feed.id === nextFeed.id);
+      if (existingIndex === -1) {
+        return [nextFeed, ...current];
+      }
+      const updatedFeeds = [...current];
+      updatedFeeds[existingIndex] = nextFeed;
+      return updatedFeeds;
+    });
+    setContentEditor(null);
+  }
+
+  function handleToggleMlsFeed(feedId: string, enabled: boolean) {
+    updateLaunchedMlsFeeds((current) =>
+      current.map((feed) => (feed.id === feedId ? { ...feed, enabled } : feed))
+    );
+  }
+
+  function handleSavePocketListing(nextListing: LaunchedListing) {
+    updatePocketListings((current) => {
       const existingIndex = current.findIndex((listing) => listing.id === nextListing.id);
       if (existingIndex === -1) {
         return [nextListing, ...current];
@@ -1522,11 +1648,11 @@ function LaunchSuccessScreen({
       updatedListings[existingIndex] = nextListing;
       return updatedListings;
     });
-    setListingEditor(null);
+    setContentEditor(null);
   }
 
-  function handleToggleListing(listingId: string, enabled: boolean) {
-    updateLaunchedListings((current) =>
+  function handleTogglePocketListing(listingId: string, enabled: boolean) {
+    updatePocketListings((current) =>
       current.map((listing) => (listing.id === listingId ? { ...listing, enabled } : listing))
     );
   }
@@ -1680,11 +1806,15 @@ function LaunchSuccessScreen({
           />
         ) : activeView === "listings" ? (
           <ListingsWorkspace
-            listings={launchedListings}
-            onCreateMlxListing={() => setListingEditor({ mode: "create", type: "mlx" })}
-            onCreatePocketListing={() => setListingEditor({ mode: "create", type: "pocket" })}
-            onEditListing={(listing) => setListingEditor({ mode: "edit", type: listing.type, listingId: listing.id })}
-            onToggleListing={handleToggleListing}
+            mlsFeeds={launchedMlsFeeds}
+            pocketListings={launchedPocketListings}
+            enabledListingCount={enabledListings.length}
+            onCreateMlsFeed={() => setContentEditor({ mode: "create", kind: "mls-feed" })}
+            onEditMlsFeed={(feed) => setContentEditor({ mode: "edit", kind: "mls-feed", feedId: feed.id })}
+            onToggleMlsFeed={handleToggleMlsFeed}
+            onCreatePocketListing={() => setContentEditor({ mode: "create", kind: "pocket-listing" })}
+            onEditPocketListing={(listing) => setContentEditor({ mode: "edit", kind: "pocket-listing", listingId: listing.id })}
+            onTogglePocketListing={handleTogglePocketListing}
           />
         ) : activeView === "websites" ? (
           <WebsitesWorkspace
@@ -1703,17 +1833,24 @@ function LaunchSuccessScreen({
           onSelectProfile={handleSelectDemoProfile}
         />
       ) : null}
-      {listingEditor ? (
-        <ListingEditorModal
-          listingType={listingEditor.type}
+      {contentEditor?.kind === "mls-feed" ? (
+        <MlsFeedEditorModal
+          existingFeed={contentEditor.feedId ? launchedMlsFeeds.find((feed) => feed.id === contentEditor.feedId) ?? null : null}
+          existingCount={launchedMlsFeeds.length}
+          onClose={() => setContentEditor(null)}
+          onSave={handleSaveMlsFeed}
+        />
+      ) : null}
+      {contentEditor?.kind === "pocket-listing" ? (
+        <PocketListingEditorModal
           existingListing={
-            listingEditor.listingId
-              ? launchedListings.find((listing) => listing.id === listingEditor.listingId) ?? null
+            contentEditor.listingId
+              ? launchedPocketListings.find((listing) => listing.id === contentEditor.listingId) ?? null
               : null
           }
-          existingCount={launchedListings.filter((listing) => listing.type === listingEditor.type).length}
-          onClose={() => setListingEditor(null)}
-          onSave={handleSaveListing}
+          existingCount={launchedPocketListings.length}
+          onClose={() => setContentEditor(null)}
+          onSave={handleSavePocketListing}
         />
       ) : null}
       {showIdxPreview ? (
@@ -2002,7 +2139,7 @@ function DashboardHome({
               ))}
             </div>
           ) : (
-            <EmptyWidgetState message="No enabled listings yet. Open Content > Listings to configure the properties that should feed your website." />
+            <EmptyWidgetState message="No enabled listings yet. Open Content > Listings to configure MLS feeds or pocket listings for your website." />
           )
         ) : (
           <EmptyWidgetState message="Build Content > Listings to bring property activity into the dashboard." />
@@ -2028,60 +2165,137 @@ function DashboardHome({
 }
 
 function ListingsWorkspace({
-  listings,
-  onCreateMlxListing,
+  mlsFeeds,
+  pocketListings,
+  enabledListingCount,
+  onCreateMlsFeed,
+  onEditMlsFeed,
+  onToggleMlsFeed,
   onCreatePocketListing,
-  onEditListing,
-  onToggleListing
+  onEditPocketListing,
+  onTogglePocketListing
 }: {
-  listings: LaunchedListing[];
-  onCreateMlxListing: () => void;
+  mlsFeeds: LaunchedMlsFeed[];
+  pocketListings: LaunchedListing[];
+  enabledListingCount: number;
+  onCreateMlsFeed: () => void;
+  onEditMlsFeed: (feed: LaunchedMlsFeed) => void;
+  onToggleMlsFeed: (feedId: string, enabled: boolean) => void;
   onCreatePocketListing: () => void;
-  onEditListing: (listing: LaunchedListing) => void;
-  onToggleListing: (listingId: string, enabled: boolean) => void;
+  onEditPocketListing: (listing: LaunchedListing) => void;
+  onTogglePocketListing: (listingId: string, enabled: boolean) => void;
 }) {
-  const mlxListings = listings.filter((listing) => listing.type === "mlx");
-  const pocketListings = listings.filter((listing) => listing.type === "pocket");
-
   return (
     <section className="listings-workspace">
       <div className="listings-workspace__hero">
         <div>
           <p className="section-kicker">Content</p>
           <h2>Listings</h2>
-          <p>Configure MLX and pocket listings here. Any enabled properties will populate the dashboard and your IDX website preview.</p>
+          <p>Configure MLS feeds and pocket listings here. Enabled feeds and properties will populate the dashboard and your IDX website preview.</p>
         </div>
         <div className="chip-wrap">
-          <span className="mini-chip mini-chip--success">{listings.filter((listing) => listing.enabled).length} enabled</span>
-          <span className="mini-chip">{listings.length} saved</span>
+          <span className="mini-chip mini-chip--success">{enabledListingCount} enabled</span>
+          <span className="mini-chip">{mlsFeeds.length + pocketListings.length} saved</span>
         </div>
       </div>
 
       <div className="listings-workspace__grid">
-        <ListingCollectionCard
-          title="MLX listings"
-          subtitle="Connect listings from your MLX feed and choose the ones that should appear on your website."
-          listings={mlxListings}
-          addButtonLabel="New MLX listing"
-          onAdd={onCreateMlxListing}
-          onEdit={onEditListing}
-          onToggleListing={onToggleListing}
+        <MlsFeedCollectionCard
+          feeds={mlsFeeds}
+          onAdd={onCreateMlsFeed}
+          onEdit={onEditMlsFeed}
+          onToggleFeed={onToggleMlsFeed}
         />
-        <ListingCollectionCard
+        <PocketListingCollectionCard
           title="Pocket listings"
           subtitle="Add off-market inventory and keep it ready for previews and private website builds."
           listings={pocketListings}
           addButtonLabel="New pocket listing"
           onAdd={onCreatePocketListing}
-          onEdit={onEditListing}
-          onToggleListing={onToggleListing}
+          onEdit={onEditPocketListing}
+          onToggleListing={onTogglePocketListing}
         />
       </div>
     </section>
   );
 }
 
-function ListingCollectionCard({
+function MlsFeedCollectionCard({
+  feeds,
+  onAdd,
+  onEdit,
+  onToggleFeed
+}: {
+  feeds: LaunchedMlsFeed[];
+  onAdd: () => void;
+  onEdit: (feed: LaunchedMlsFeed) => void;
+  onToggleFeed: (feedId: string, enabled: boolean) => void;
+}) {
+  return (
+    <article className="listing-collection-card">
+      <div className="listing-collection-card__header">
+        <div>
+          <h3>MLS feeds</h3>
+          <p>Connect MLS feeds that should provide listing inventory to your website preview and dashboard.</p>
+        </div>
+        <button className="secondary-button" onClick={onAdd}>
+          <Plus size={16} />
+          New MLS feed
+        </button>
+      </div>
+
+      {feeds.length ? (
+        <div className="listing-management-list">
+          {feeds.map((feed) => (
+            <article key={feed.id} className="listing-management-card">
+              <div className="chip-wrap">
+                <span className="mini-badge">MLS feed</span>
+                <span className={`mini-badge ${feed.enabled ? "mini-badge--built" : ""}`}>{feed.enabled ? "Enabled" : "Disabled"}</span>
+              </div>
+              <div className="listing-management-card__body">
+                <div className="listing-management-card__title-row">
+                  <div>
+                    <strong>{feed.sourceName}</strong>
+                    <span>Feed ID {feed.referenceId}</span>
+                  </div>
+                  <strong className="listing-management-card__price">Agent ID {feed.agentId}</strong>
+                </div>
+                <p>Sample MLS listings from this feed will power the dashboard, IDX preview, and builder handoff.</p>
+                <div className="listing-management-card__meta">
+                  <span>Source {feed.sourceName}</span>
+                  <span>Reference {feed.referenceId}</span>
+                </div>
+                <small>Feed configuration stays local in this demo and uses fixture-backed listings for preview output.</small>
+              </div>
+              <div className="listing-management-card__actions">
+                <button className="secondary-button" onClick={() => onEdit(feed)}>
+                  Edit feed
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-button toggle-button--switch ${feed.enabled ? "toggle-button--on" : ""}`}
+                  aria-pressed={feed.enabled}
+                  onClick={() => onToggleFeed(feed.id, !feed.enabled)}
+                >
+                  <span />
+                  <span className="sr-only">{feed.enabled ? "Disable MLS feed" : "Enable MLS feed"}</span>
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="workspace-empty-card">
+          <Layers3 size={24} />
+          <h4>No MLS feeds configured</h4>
+          <p>Use the feed setup form to connect your first MLS feed. Demo fill will preload a sample feed you can save immediately.</p>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function PocketListingCollectionCard({
   title,
   subtitle,
   listings,
@@ -2183,7 +2397,11 @@ function WebsitesWorkspace({
           <p className="section-kicker">Content</p>
           <h2>Websites</h2>
           <p>No websites created yet.</p>
-          <small>{enabledListingCount ? `${enabledListingCount} enabled listing${enabledListingCount === 1 ? "" : "s"} ready for IDX preview.` : "Enable at least one listing before creating an IDX website."}</small>
+          <small>
+            {enabledListingCount
+              ? `${enabledListingCount} enabled listing${enabledListingCount === 1 ? "" : "s"} ready for IDX preview.`
+              : "Enable at least one MLS feed or pocket listing before creating an IDX website."}
+          </small>
         </div>
         <div className="websites-empty-state__cta-wrap">
           <button className="launch-button websites-empty-state__cta" onClick={onCreateIdxWebsite}>
@@ -2206,7 +2424,7 @@ function IdxBuilderWorkspace({ enabledListings }: { enabledListings: LaunchedLis
           <p>The website builder shell is ready. The content canvas stays empty for now while the AI sidebar takes over the next step.</p>
         </div>
         <div className="chip-wrap">
-          <span className="mini-chip mini-chip--success">{enabledListings.length} listings connected</span>
+          <span className="mini-chip mini-chip--success">{enabledListings.length} preview listings connected</span>
         </div>
       </div>
       <div className="idx-builder-canvas idx-builder-canvas--disabled">
@@ -2227,28 +2445,26 @@ function IdxBuilderWorkspace({ enabledListings }: { enabledListings: LaunchedLis
   );
 }
 
-function ListingEditorModal({
-  listingType,
-  existingListing,
+function MlsFeedEditorModal({
+  existingFeed,
   existingCount,
   onClose,
   onSave
 }: {
-  listingType: LaunchedListingType;
-  existingListing: LaunchedListing | null;
+  existingFeed: LaunchedMlsFeed | null;
   existingCount: number;
   onClose: () => void;
-  onSave: (listing: LaunchedListing) => void;
+  onSave: (feed: LaunchedMlsFeed) => void;
 }) {
-  const [formValues, setFormValues] = useState<ListingFormValues>(buildListingFormValues(listingType, existingListing ?? undefined));
+  const [formValues, setFormValues] = useState<MlsFeedFormValues>(buildMlsFeedFormValues(existingFeed ?? undefined));
 
   useEffect(() => {
-    setFormValues(buildListingFormValues(listingType, existingListing ?? undefined));
-  }, [existingListing, listingType]);
+    setFormValues(buildMlsFeedFormValues(existingFeed ?? undefined));
+  }, [existingFeed]);
 
-  const isValid = validateListingForm(listingType, formValues);
+  const isValid = validateMlsFeedForm(formValues);
 
-  function updateField(field: keyof ListingFormValues, value: string | boolean) {
+  function updateField(field: keyof MlsFeedFormValues, value: string | boolean) {
     setFormValues((current) => ({
       ...current,
       [field]: value
@@ -2257,14 +2473,14 @@ function ListingEditorModal({
 
   return (
     <ModalFrame
-      title={`${existingListing ? "Edit" : "Create"} ${getListingTypeLabel(listingType)}`}
-      subtitle={`Set up the ${listingType === "mlx" ? "MLX" : "pocket"} property details that should be available for website creation.`}
+      title={`${existingFeed ? "Edit" : "Create"} MLS feed`}
+      subtitle="Set up the MLS feed connection that should supply demo-backed listings for website creation."
       onClose={onClose}
       panelClassName="modal-panel--wide"
     >
       <div className="listing-editor-modal">
         <div className="listing-editor-modal__actions">
-          <button className="secondary-button" onClick={() => setFormValues(getDemoListingFormValues(listingType, existingCount))}>
+          <button className="secondary-button" onClick={() => setFormValues(getDemoMlsFeedFormValues(existingCount))}>
             <WandSparkles size={16} />
             Demo fill
           </button>
@@ -2280,35 +2496,123 @@ function ListingEditorModal({
         <div className="listing-form-grid">
           <label className="field-block">
             <div className="field-label-row">
-              <span>{listingType === "mlx" ? "MLX source" : "Pocket source"}</span>
+              <span>MLS source</span>
               <small>Required</small>
             </div>
             <input value={formValues.sourceName} onChange={(event) => updateField("sourceName", event.target.value)} />
-            <p>{listingType === "mlx" ? "Name of the MLX feed providing this listing." : "Private network or office channel this listing belongs to."}</p>
+            <p>Name of the MLS feed that should supply listings to the website preview.</p>
           </label>
 
           <label className="field-block">
             <div className="field-label-row">
-              <span>{listingType === "mlx" ? "Agent ID" : "Seller contact"}</span>
+              <span>Listing Agent ID</span>
               <small>Required</small>
             </div>
-            <input
-              value={listingType === "mlx" ? formValues.agentId : formValues.contactName}
-              onChange={(event) => updateField(listingType === "mlx" ? "agentId" : "contactName", event.target.value)}
-            />
-            <p>{listingType === "mlx" ? "Used to tie this property back to the MLX feed." : "Primary contact for the off-market opportunity."}</p>
+            <input value={formValues.agentId} onChange={(event) => updateField("agentId", event.target.value)} />
+            <p>Enter the agent identifier used to match listings from this feed.</p>
           </label>
 
           <label className="field-block">
             <div className="field-label-row">
-              <span>{listingType === "mlx" ? "Reference ID" : "Availability"}</span>
+              <span>Feed reference ID</span>
               <small>Required</small>
             </div>
-            <input
-              value={listingType === "mlx" ? formValues.referenceId : formValues.availability}
-              onChange={(event) => updateField(listingType === "mlx" ? "referenceId" : "availability", event.target.value)}
-            />
-            <p>{listingType === "mlx" ? "MLS, MLX, or internal listing number." : "Set expectations for private tours and timing."}</p>
+            <input value={formValues.referenceId} onChange={(event) => updateField("referenceId", event.target.value)} />
+            <p>Use the MLS, IDX, or internal feed identifier that distinguishes this connection.</p>
+          </label>
+        </div>
+
+        <div className="panel-button-row">
+          <button className="secondary-button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="primary-button"
+            disabled={!isValid}
+            onClick={() => onSave(buildMlsFeedFromForm(formValues, existingFeed?.id))}
+          >
+            Save MLS feed
+          </button>
+        </div>
+      </div>
+    </ModalFrame>
+  );
+}
+
+function PocketListingEditorModal({
+  existingListing,
+  existingCount,
+  onClose,
+  onSave
+}: {
+  existingListing: LaunchedListing | null;
+  existingCount: number;
+  onClose: () => void;
+  onSave: (listing: LaunchedListing) => void;
+}) {
+  const [formValues, setFormValues] = useState<PocketListingFormValues>(buildPocketListingFormValues(existingListing ?? undefined));
+
+  useEffect(() => {
+    setFormValues(buildPocketListingFormValues(existingListing ?? undefined));
+  }, [existingListing]);
+
+  const isValid = validatePocketListingForm(formValues);
+
+  function updateField(field: keyof PocketListingFormValues, value: string | boolean) {
+    setFormValues((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  return (
+    <ModalFrame
+      title={`${existingListing ? "Edit" : "Create"} Pocket listing`}
+      subtitle="Set up the off-market property details that should be available for website creation."
+      onClose={onClose}
+      panelClassName="modal-panel--wide"
+    >
+      <div className="listing-editor-modal">
+        <div className="listing-editor-modal__actions">
+          <button className="secondary-button" onClick={() => setFormValues(getDemoPocketListingFormValues(existingCount))}>
+            <WandSparkles size={16} />
+            Demo fill
+          </button>
+          <button
+            type="button"
+            className={`toggle-button ${formValues.enabled ? "toggle-button--on" : ""}`}
+            onClick={() => updateField("enabled", !formValues.enabled)}
+          >
+            {formValues.enabled ? "Enabled for website" : "Save disabled"}
+          </button>
+        </div>
+
+        <div className="listing-form-grid">
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Pocket source</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.sourceName} onChange={(event) => updateField("sourceName", event.target.value)} />
+            <p>Private network or office channel this listing belongs to.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Seller contact</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.contactName} onChange={(event) => updateField("contactName", event.target.value)} />
+            <p>Primary contact for the off-market opportunity.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Availability</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.availability} onChange={(event) => updateField("availability", event.target.value)} />
+            <p>Set expectations for private tours and timing.</p>
           </label>
 
           <label className="field-block field-block--wide">
@@ -2436,9 +2740,9 @@ function ListingEditorModal({
           <button
             className="primary-button"
             disabled={!isValid}
-            onClick={() => onSave(buildListingFromForm(listingType, formValues, existingListing?.id))}
+            onClick={() => onSave(buildPocketListingFromForm(formValues, existingListing?.id))}
           >
-            Save listing
+            Save pocket listing
           </button>
         </div>
       </div>
