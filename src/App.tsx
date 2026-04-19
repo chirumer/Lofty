@@ -1271,6 +1271,8 @@ function LaunchSuccessScreen({
   return (
     <LoftyLaunchedShell
       activeView={activeView}
+      enabledCardIds={launchedCards.map(({ card }) => card.id)}
+      enabledSubfeatureIds={[...launchedSubfeatureIds]}
       onNavigateHome={() => setActiveView("home")}
       onNavigatePeople={() => setActiveView("crm-people")}
     >

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { LaunchedShellView } from "../types";
+import type { LaunchedShellView, LibraryCardId } from "../types";
 
 const attrs = {
   shell: { "data-v-43af4082": "" },
@@ -21,14 +21,17 @@ const attrs = {
 };
 
 type ShellSubmenuItem = {
+  cardId?: LibraryCardId;
   href?: string;
   icon?: string;
   label: string;
+  subfeatureId?: string;
   submenu?: Array<{ href?: string; label: string }>;
   view?: LaunchedShellView;
 };
 
 type ShellHeaderItem = {
+  cardId: LibraryCardId;
   href?: string;
   icon?: string;
   isAi?: boolean;
@@ -38,34 +41,39 @@ type ShellHeaderItem = {
 
 const headerItems: ShellHeaderItem[] = [
   {
+    cardId: "crm",
     label: "CRM",
     href: "https://crm.lofty.com/admin/home/lead/list?type=all",
     submenu: [
-      { label: "People", icon: "icon-people_06", view: "crm-people" },
-      { label: "Segments", icon: "icon-group_01", href: "https://crm.lofty.com/admin/home/lead/segments" },
-      { label: "Tasks", icon: "icon-task_01", href: "https://crm.lofty.com/admin/home/task/list?type=my-all" },
-      { label: "Calendar", icon: "icon-calendar_01", href: "https://crm.lofty.com/admin/home/task/calendar" }
+      { cardId: "crm", label: "People", icon: "icon-people_06", subfeatureId: "people", view: "crm-people" },
+      { cardId: "crm", label: "Segments", icon: "icon-group_01", subfeatureId: "segments", href: "https://crm.lofty.com/admin/home/lead/segments" },
+      { cardId: "crm", label: "Tasks", icon: "icon-task_01", subfeatureId: "tasks", href: "https://crm.lofty.com/admin/home/task/list?type=my-all" },
+      { cardId: "crm", label: "Calendar", icon: "icon-calendar_01", subfeatureId: "calendar", href: "https://crm.lofty.com/admin/home/task/calendar" }
     ]
   },
   {
+    cardId: "sales",
     label: "Sales",
     href: "https://crm.lofty.com/admin/home/listingmgmt",
     submenu: [
-      { label: "Showing", icon: "icon-CRM-showing", href: "https://crm.lofty.com/admin/home/task/showing" },
-      { label: "Offers", icon: "icon-offer_01", href: "https://crm.lofty.com/admin/home/offer" },
-      { label: "Transactions", icon: "icon-Transaction", href: "https://crm.lofty.com/admin/home/transaction" }
+      { cardId: "sales", label: "Showing", icon: "icon-CRM-showing", subfeatureId: "showing", href: "https://crm.lofty.com/admin/home/task/showing" },
+      { cardId: "sales", label: "Offers", icon: "icon-offer_01", subfeatureId: "offers", href: "https://crm.lofty.com/admin/home/offer" },
+      { cardId: "sales", label: "Transactions", icon: "icon-Transaction", subfeatureId: "transactions", href: "https://crm.lofty.com/admin/home/transaction" }
     ]
   },
   {
+    cardId: "marketing",
     label: "Marketing",
     href: "https://crm.lofty.com/admin/home/marketing/emails",
     submenu: [
-      { label: "Emails", icon: "icon-mail_01", href: "https://crm.lofty.com/admin/home/marketing/emails" },
-      { label: "Text Messages", icon: "icon-message_01", href: "https://crm.lofty.com/admin/home/marketing/texts" },
-      { label: "Social Agent", icon: "icon-social_01", href: "https://crm.lofty.com/admin/home/campaigns/socialMedia" },
-      { label: "Direct Mail", icon: "icon-mailbox_01", href: "https://crm.lofty.com/admin/home/campaigns/printCenter" },
+      { cardId: "marketing", label: "Emails", icon: "icon-mail_01", subfeatureId: "emails", href: "https://crm.lofty.com/admin/home/marketing/emails" },
+      { cardId: "marketing", label: "Text Messages", icon: "icon-message_01", subfeatureId: "text-messages", href: "https://crm.lofty.com/admin/home/marketing/texts" },
+      { cardId: "marketing", label: "Social Agent", icon: "icon-social_01", subfeatureId: "social-agent", href: "https://crm.lofty.com/admin/home/campaigns/socialMedia" },
+      { cardId: "marketing", label: "Direct Mail", icon: "icon-mailbox_01", subfeatureId: "direct-mail", href: "https://crm.lofty.com/admin/home/campaigns/printCenter" },
       {
+        cardId: "marketing",
         label: "Lead Generation",
+        subfeatureId: "lead-generation",
         icon: "icon-lead_capture",
         href: "https://crm.lofty.com/admin/home/campaigns/dashboard",
         submenu: [
@@ -74,9 +82,11 @@ const headerItems: ShellHeaderItem[] = [
           { label: "Re-Marketing Ads", href: "https://crm.lofty.com/admin/home/campaigns/remarketingAds" }
         ]
       },
-      { label: "Lofty Bloom", icon: "icon-location_03", href: "https://crm.lofty.com/admin/home/LoftyBloom" },
+      { cardId: "marketing", label: "Lofty Bloom", icon: "icon-location_03", subfeatureId: "lofty-bloom", href: "https://crm.lofty.com/admin/home/LoftyBloom" },
       {
+        cardId: "marketing",
         label: "Brand Awareness",
+        subfeatureId: "brand-awareness",
         icon: "icon-brag",
         href: "https://crm.lofty.com/admin/home/campaigns/sphereAds",
         submenu: [{ label: "Local Service Ads", href: "https://crm.lofty.com/admin/home/campaigns/localServiceAds" }]
@@ -84,35 +94,37 @@ const headerItems: ShellHeaderItem[] = [
     ]
   },
   {
+    cardId: "content",
     label: "Content",
     submenu: [
-      { label: "Websites", icon: "icon-Website1" },
-      { label: "Landing Pages", icon: "icon-site_style", href: "https://crm.lofty.com/admin/home/campaigns/landingPage" },
-      { label: "Lofty Present", icon: "icon-listhome_01", href: "https://crm.lofty.com/admin/home/campaigns/cma" },
-      { label: "Open House Form", icon: "icon-letter_01", href: "https://crm.lofty.com/admin/home/campaigns/openHouse" },
-      { label: "Design Center", icon: "icon-editimage_01", href: "https://crm.lofty.com/admin/home/campaigns/designCenter" }
+      { cardId: "content", label: "Websites", icon: "icon-Website1", subfeatureId: "websites" },
+      { cardId: "content", label: "Landing Pages", icon: "icon-site_style", subfeatureId: "landing-pages", href: "https://crm.lofty.com/admin/home/campaigns/landingPage" },
+      { cardId: "content", label: "Lofty Present", icon: "icon-listhome_01", subfeatureId: "lofty-present", href: "https://crm.lofty.com/admin/home/campaigns/cma" },
+      { cardId: "content", label: "Open House Form", icon: "icon-letter_01", subfeatureId: "open-house-form", href: "https://crm.lofty.com/admin/home/campaigns/openHouse" },
+      { cardId: "content", label: "Design Center", icon: "icon-editimage_01", subfeatureId: "design-center", href: "https://crm.lofty.com/admin/home/campaigns/designCenter" }
     ]
   },
   {
+    cardId: "automation",
     label: "Automation",
     href: "https://crm.lofty.com/admin/home/campaigns/smartPlan",
     submenu: [
-      { label: "Smart Plans", icon: "icon-smart_plan_01", href: "https://crm.lofty.com/admin/home/campaigns/smartPlan" },
-      { label: "Homeowner Agent", icon: "icon-house_17", href: "https://crm.lofty.com/admin/home/smartHomeowner" },
-      { label: "Auto Property Alert", icon: "icon-Vector", href: "https://crm.lofty.com/admin/home/campaigns/autoAlert" },
-      { label: "Text Codes", icon: "icon-message_01", href: "https://crm.lofty.com/admin/home/campaigns/textCode" }
+      { cardId: "automation", label: "Smart Plans", icon: "icon-smart_plan_01", subfeatureId: "smart-plans", href: "https://crm.lofty.com/admin/home/campaigns/smartPlan" },
+      { cardId: "automation", label: "Auto Property Alert", icon: "icon-Vector", subfeatureId: "property-alerts", href: "https://crm.lofty.com/admin/home/campaigns/autoAlert" }
     ]
   },
-  { label: "Reporting", href: "https://crm.lofty.com/admin/home/reporting" },
+  { cardId: "reporting", label: "Reporting", href: "https://crm.lofty.com/admin/home/reporting" },
   {
+    cardId: "marketplace",
     label: "Marketplace",
     href: "https://crm.lofty.com/admin/home/marketPlace",
     submenu: [
-      { label: "Marketplace", icon: "icon-Marketplace", href: "https://crm.lofty.com/admin/home/marketPlace" },
-      { label: "Integration Center", icon: "icon-integration_01", href: "https://crm.lofty.com/admin/home/integrationCenter" }
+      { cardId: "marketplace", label: "Marketplace", icon: "icon-Marketplace", subfeatureId: "marketplace", href: "https://crm.lofty.com/admin/home/marketPlace" },
+      { cardId: "marketplace", label: "Integration Center", icon: "icon-integration_01", subfeatureId: "integration-center", href: "https://crm.lofty.com/admin/home/integrationCenter" }
     ]
   },
   {
+    cardId: "ai-copilots",
     label: "AI Copilots",
     href: "https://crm.lofty.com/admin/home/loftyAIOverview",
     icon: "icon-AI",
@@ -388,11 +400,15 @@ function UtilityPanel({ item, onClose }: { item: (typeof utilityItems)[number] |
 export default function LoftyLaunchedShell({
   activeView,
   children,
+  enabledCardIds,
+  enabledSubfeatureIds,
   onNavigateHome,
   onNavigatePeople
 }: {
   activeView: LaunchedShellView;
   children: ReactNode;
+  enabledCardIds: LibraryCardId[];
+  enabledSubfeatureIds: string[];
   onNavigateHome: () => void;
   onNavigatePeople: () => void;
 }) {
@@ -408,6 +424,30 @@ export default function LoftyLaunchedShell({
     () => utilityItems.find((item) => item.id === activeUtilityId) ?? null,
     [activeUtilityId]
   );
+  const visibleHeaderItems = useMemo(() => {
+    const enabledCards = new Set(enabledCardIds);
+    const enabledSubfeatures = new Set(enabledSubfeatureIds);
+
+    return headerItems.flatMap((item) => {
+      if (!enabledCards.has(item.cardId)) {
+        return [];
+      }
+
+      if (!item.submenu) {
+        return [item];
+      }
+
+      const visibleSubmenu = item.submenu.filter((subitem) => {
+        if (!subitem.subfeatureId) {
+          return true;
+        }
+
+        return enabledSubfeatures.has(subitem.subfeatureId);
+      });
+
+      return [{ ...item, submenu: visibleSubmenu }];
+    });
+  }, [enabledCardIds, enabledSubfeatureIds]);
 
   function handleNavigate(view: LaunchedShellView) {
     setOpenMenu(null);
@@ -484,7 +524,7 @@ export default function LoftyLaunchedShell({
                       style={{ ["--eleInterval" as string]: "31px", ["--moreInterval" as string]: "0px" }}
                     >
                       <div {...attrs.overflow} className="display-items">
-                        {headerItems.map((item, index) => (
+                        {visibleHeaderItems.map((item, index) => (
                           <HeaderMenuCell
                             key={item.label}
                             activeView={activeView}
