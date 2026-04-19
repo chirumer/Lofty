@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { LaunchedShellView } from "../types";
+import type { LaunchedNavItem, LaunchedShellView } from "../types";
 
 const attrs = {
   shell: { "data-v-43af4082": "" },
@@ -20,22 +20,6 @@ const attrs = {
   slot: { "data-v-759a198c": "" }
 };
 
-type ShellSubmenuItem = {
-  href?: string;
-  icon?: string;
-  label: string;
-  submenu?: Array<{ href?: string; label: string }>;
-  view?: LaunchedShellView;
-};
-
-type ShellHeaderItem = {
-  href?: string;
-  icon?: string;
-  isAi?: boolean;
-  label: string;
-  submenu?: ShellSubmenuItem[];
-};
-
 type UtilityItem = {
   id: string;
   icon: string;
@@ -47,90 +31,6 @@ type UtilityItem = {
   view?: Extract<LaunchedShellView, "messages" | "negotiation">;
   opensProfileSwitch?: boolean;
 };
-
-const headerItems: ShellHeaderItem[] = [
-  {
-    label: "CRM",
-    href: "/",
-    submenu: [
-      { label: "People", icon: "icon-people_06", view: "crm-people" },
-      { label: "Segments", icon: "icon-group_01", href: "/" },
-      { label: "Tasks", icon: "icon-task_01", href: "/" },
-      { label: "Calendar", icon: "icon-calendar_01", href: "/" }
-    ]
-  },
-  {
-    label: "Sales",
-    href: "/",
-    submenu: [
-      { label: "Showing", icon: "icon-CRM-showing", href: "/" },
-      { label: "Offers", icon: "icon-offer_01", href: "/" },
-      { label: "Transactions", icon: "icon-Transaction", href: "/" }
-    ]
-  },
-  {
-    label: "Marketing",
-    href: "/",
-    submenu: [
-      { label: "Emails", icon: "icon-mail_01", href: "/" },
-      { label: "Text Messages", icon: "icon-message_01", href: "/" },
-      { label: "Social Agent", icon: "icon-social_01", href: "/" },
-      { label: "Direct Mail", icon: "icon-mailbox_01", href: "/" },
-      {
-        label: "Lead Generation",
-        icon: "icon-lead_capture",
-        href: "/",
-        submenu: [
-          { label: "Buyer Lead Gen", href: "/" },
-          { label: "Seller Lead Gen", href: "/" },
-          { label: "Re-Marketing Ads", href: "/" }
-        ]
-      },
-      { label: "Lofty Bloom", icon: "icon-location_03", href: "/" },
-      {
-        label: "Brand Awareness",
-        icon: "icon-brag",
-        href: "/",
-        submenu: [{ label: "Local Service Ads", href: "/" }]
-      }
-    ]
-  },
-  {
-    label: "Content",
-    submenu: [
-      { label: "Websites", icon: "icon-Website1" },
-      { label: "Landing Pages", icon: "icon-site_style", href: "/" },
-      { label: "Lofty Present", icon: "icon-listhome_01", href: "/" },
-      { label: "Open House Form", icon: "icon-letter_01", href: "/" },
-      { label: "Design Center", icon: "icon-editimage_01", href: "/" }
-    ]
-  },
-  {
-    label: "Automation",
-    href: "/",
-    submenu: [
-      { label: "Smart Plans", icon: "icon-smart_plan_01", href: "/" },
-      { label: "Homeowner Agent", icon: "icon-house_17", href: "/" },
-      { label: "Auto Property Alert", icon: "icon-Vector", href: "/" },
-      { label: "Text Codes", icon: "icon-message_01", href: "/" }
-    ]
-  },
-  { label: "Reporting", href: "/" },
-  {
-    label: "Marketplace",
-    href: "/",
-    submenu: [
-      { label: "Marketplace", icon: "icon-Marketplace", href: "/" },
-      { label: "Integration Center", icon: "icon-integration_01", href: "/" }
-    ]
-  },
-  {
-    label: "AI Copilots",
-    href: "/",
-    icon: "icon-AI",
-    isAi: true
-  }
-];
 
 const utilityItems: UtilityItem[] = [
   {
@@ -272,13 +172,14 @@ function MenuSubitem({
   onNavigate
 }: {
   activeView: LaunchedShellView;
-  item: ShellSubmenuItem;
+  item: LaunchedNavItem;
   onNavigateHome: () => void;
   onNavigate: (view: LaunchedShellView) => void;
 }) {
   const [isNestedOpen, setIsNestedOpen] = useState(false);
   const closeTimerRef = useRef<number | null>(null);
   const isActive = item.view ? activeView === item.view : false;
+  const itemAction = item.view ? () => onNavigate(item.view as LaunchedShellView) : item.href === "/" ? onNavigateHome : undefined;
 
   function clearCloseTimer() {
     if (closeTimerRef.current !== null) {
@@ -306,14 +207,16 @@ function MenuSubitem({
     };
   }, []);
 
-  if (!item.submenu) {
+  const nestedItems = item.submenu ?? [];
+
+  if (nestedItems.length === 0) {
     return (
       <MenuItemAction
         {...attrs.dropdown}
         className={`crm-only-header-menu__item crm-only-header-menu__subitem ${isActive ? "is-active" : ""}`.trim()}
         href={item.href && item.href !== "/" ? item.href : undefined}
         needicon=""
-        onAction={item.view ? () => onNavigate(item.view!) : item.href === "/" ? onNavigateHome : undefined}
+        onAction={itemAction}
       >
         {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
         <span {...attrs.dropdown} className="crm-only-header-menu__title">
@@ -352,24 +255,27 @@ function MenuSubitem({
         onMouseLeave={closeNestedMenu}
       >
         <div className="com-dropdown-content crm-only-header-menu__dropdown">
-          {item.submenu.map((subitem) => (
-            <MenuItemAction
+          {nestedItems.map((subitem) => (
+            <MenuSubitem
               key={subitem.label}
-              {...attrs.dropdown}
-              className="crm-only-header-menu__item crm-only-header-menu__subitem"
-              href={subitem.href && subitem.href !== "/" ? subitem.href : undefined}
-              needicon=""
-              onAction={subitem.href === "/" ? onNavigateHome : undefined}
-            >
-              <span {...attrs.dropdown} className="crm-only-header-menu__title">
-                {subitem.label}
-              </span>
-            </MenuItemAction>
+              activeView={activeView}
+              item={subitem}
+              onNavigateHome={onNavigateHome}
+              onNavigate={onNavigate}
+            />
           ))}
         </div>
       </div>
     </div>
   );
+}
+
+function isNavItemActive(item: LaunchedNavItem, activeView: LaunchedShellView): boolean {
+  if (item.view && item.view === activeView) {
+    return true;
+  }
+
+  return (item.submenu ?? []).some((subitem) => isNavItemActive(subitem, activeView));
 }
 
 function HeaderMenuCell({
@@ -383,14 +289,14 @@ function HeaderMenuCell({
 }: {
   activeView: LaunchedShellView;
   index: number;
-  item: ShellHeaderItem;
+  item: LaunchedNavItem;
   onNavigateHome: () => void;
   openMenu: string | null;
   setOpenMenu: React.Dispatch<React.SetStateAction<string | null>>;
   onNavigate: (view: LaunchedShellView) => void;
 }) {
   const isOpen = openMenu === item.label;
-  const isActive = activeView === "crm-people" && item.label === "CRM";
+  const isActive = isNavItemActive(item, activeView);
   const closeTimerRef = useRef<number | null>(null);
 
   function clearCloseTimer() {
@@ -419,7 +325,9 @@ function HeaderMenuCell({
     };
   }, []);
 
-  if (!item.submenu) {
+  const submenuItems = item.submenu ?? [];
+
+  if (submenuItems.length === 0) {
     return (
       <div {...attrs.overflow} id={`com-overflow-display-cell-${index}`} data-index={index} className="display-cell">
         <MenuItemAction
@@ -469,7 +377,7 @@ function HeaderMenuCell({
           onMouseLeave={closeMenuWithDelay}
         >
             <div className="com-dropdown-content crm-only-header-menu__dropdown">
-            {item.submenu.map((subitem) => (
+            {submenuItems.map((subitem) => (
               <MenuSubitem
                 key={subitem.label}
                 activeView={activeView}
@@ -520,6 +428,7 @@ export default function LoftyLaunchedShell({
   children,
   activeProfileEmail,
   activeProfileName,
+  headerItems,
   onStartAnotherSetup,
   onNavigateHome,
   onNavigateMessages,
@@ -531,6 +440,7 @@ export default function LoftyLaunchedShell({
   children: ReactNode;
   activeProfileEmail: string;
   activeProfileName: string;
+  headerItems: LaunchedNavItem[];
   onStartAnotherSetup: () => void;
   onNavigateHome: () => void;
   onNavigateMessages: () => void;
