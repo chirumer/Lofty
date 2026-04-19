@@ -62,6 +62,7 @@ import type {
   CardState,
   CardToggleStore,
   DashboardPerson,
+  LaunchedShellView,
   LeadViewId,
   LibraryCardDefinition,
   LibraryCardId,
@@ -71,6 +72,7 @@ import type {
   RoleId,
   SubfeatureDefinition
 } from "./types";
+import LoftyLaunchedShell from "./components/LoftyLaunchedShell";
 
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
 
@@ -155,8 +157,9 @@ function App() {
   const [promptValues, setPromptValues] = useState<PromptValues>({});
 
   useEffect(() => {
-    const restoredSnapshot = loadSnapshot();
-    setSnapshot(restoredSnapshot);
+    setSnapshot(emptySnapshot);
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setHasHydrated(true);
   }, []);
 
@@ -433,8 +436,8 @@ function App() {
 
   if (snapshot.phase === "launch-success") {
     return (
-      <div className="app-shell">
-        <main className="page-shell">
+      <div className="app-shell app-shell--launched">
+        <main className="page-shell page-shell--launched">
           <LaunchSuccessScreen
             role={selectedRole}
             builtCards={accessibleCards.filter((card) => snapshot.cardStates[card.id] === "built")}
@@ -1175,40 +1178,8 @@ function LaunchSuccessScreen({
     }))
     .filter((item) => item.enabledSubfeatures.length > 0);
 
-  const [activeCardId, setActiveCardId] = useState<LibraryCardId | null>(null);
-  const [activeSubfeatureId, setActiveSubfeatureId] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<LaunchedShellView>("home");
   const [peopleViewId, setPeopleViewId] = useState<LeadViewId>("all-leads");
-
-  useEffect(() => {
-    if (!launchedCards.length) {
-      setActiveCardId(null);
-      setActiveSubfeatureId(null);
-      return;
-    }
-
-    if (activeCardId === null) {
-      return;
-    }
-
-    const activeCardStillExists = launchedCards.some((item) => item.card.id === activeCardId);
-    if (!activeCardStillExists) {
-      setActiveCardId(null);
-      setActiveSubfeatureId(null);
-      return;
-    }
-
-    const currentCard = launchedCards.find((item) => item.card.id === activeCardId);
-    const currentSubfeatureStillExists = currentCard?.enabledSubfeatures.some((item) => item.id === activeSubfeatureId);
-    if (!currentSubfeatureStillExists) {
-      setActiveSubfeatureId(currentCard?.enabledSubfeatures[0]?.id ?? null);
-    }
-  }, [activeCardId, activeSubfeatureId, launchedCards]);
-
-  const activeCardGroup = activeCardId ? launchedCards.find((item) => item.card.id === activeCardId) ?? null : null;
-  const activeSubfeature =
-    activeCardGroup?.enabledSubfeatures.find((item) => item.id === activeSubfeatureId) ??
-    activeCardGroup?.enabledSubfeatures[0] ??
-    null;
 
   const people = useMemo(() => getDashboardPeopleForRole(role.id), [role.id]);
   const peopleViewItems = getPeopleViewList(peopleViewId, role.id);
@@ -1290,126 +1261,81 @@ function LaunchSuccessScreen({
     listings: launchedSubfeatureIds.has("websites"),
     hotSheets: launchedSubfeatureIds.has("websites")
   };
-  const dashboardRouteActive = activeCardId === null || activeSubfeature === null;
+
+  useEffect(() => {
+    if (activeView === "crm-people" && !launchedSubfeatureIds.has("people")) {
+      setActiveView("home");
+    }
+  }, [activeView, launchedSubfeatureIds]);
 
   return (
-    <section className="launched-site launched-site--dashboard">
-      <header className="launched-site-header">
-        <button
-          type="button"
-          className={`launched-brand-button ${dashboardRouteActive ? "launched-brand-button--active" : ""}`}
-          onClick={() => {
-            setActiveCardId(null);
-            setActiveSubfeatureId(null);
-          }}
-          aria-label="Go to dashboard home"
-        >
-          <BrandMark className="launched-brand-mark" />
-        </button>
-
-        <nav className="launched-nav" aria-label="Website navigation">
-          {launchedCards.length
-            ? launchedCards.map(({ card, enabledSubfeatures }) => {
-              const active = activeCardId === card.id;
-              return (
-                <div key={card.id} className={`launched-nav-item ${active ? "launched-nav-item--active" : ""}`}>
-                  <button
-                    type="button"
-                    className="launched-nav-trigger"
-                    onClick={() => {
-                      setActiveCardId(card.id);
-                      setActiveSubfeatureId(enabledSubfeatures[0]?.id ?? null);
-                    }}
-                  >
-                    {card.label}
-                  </button>
-
-                  {enabledSubfeatures.length ? (
-                    <div className="launched-nav-dropdown">
-                      {enabledSubfeatures.map((subfeature) => {
-                        const selected = activeCardId === card.id && activeSubfeatureId === subfeature.id;
-                        return (
-                          <button
-                            key={subfeature.id}
-                            type="button"
-                            className={`launched-dropdown-item ${selected ? "launched-dropdown-item--active" : ""}`}
-                            onClick={() => {
-                              setActiveCardId(card.id);
-                              setActiveSubfeatureId(subfeature.id);
-                            }}
-                          >
-                            {subfeature.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
+    <LoftyLaunchedShell
+      activeView={activeView}
+      onNavigateHome={() => setActiveView("home")}
+      onNavigatePeople={() => setActiveView("crm-people")}
+    >
+      {activeView === "home" ? (
+        <div className="lofty-shell-section">
+          <div className="dashboard-page">
+            <div className="dashboard-page-header">
+              <div>
+                <h1>
+                  👋 {greetingLabel}, {greetingName}!
+                </h1>
+                <div className="dashboard-subtitle-row">
+                  <span>My Dashboard</span>
+                  <ChevronDown size={14} />
                 </div>
-              );
-            })
-            : null}
-        </nav>
-      </header>
-
-      <div className="dashboard-page">
-        <div className="dashboard-page-header">
-          <div>
-            <h1>
-              👋 {greetingLabel}, {greetingName}!
-            </h1>
-            <div className="dashboard-subtitle-row">
-              <span>My Dashboard</span>
-              <ChevronDown size={14} />
+              </div>
+              <div className="dashboard-header-actions">
+                <button className="dashboard-filter-chip">
+                  Today&apos;s Priorities
+                  <ChevronDown size={14} />
+                </button>
+                <button className="dashboard-grid-button" aria-label="Dashboard layout">
+                  <LayoutGrid size={16} />
+                </button>
+                <button className="secondary-button" onClick={onReset}>
+                  Start another setup
+                </button>
+              </div>
             </div>
+
+            <DashboardHome
+              updates={dashboardUpdates}
+              newLeads={newLeads}
+              keepInTouchLeads={keepInTouchLeads}
+              opportunityLeads={opportunityLeads}
+              opportunityCounts={opportunityCounts}
+              tasks={tasks}
+              taskCounts={taskCounts}
+              appointments={appointments}
+              showings={showings}
+              transactions={transactions}
+              listings={myListings}
+              hotSheets={hotSheetItems}
+              widgetAvailability={widgetAvailability}
+            />
           </div>
-          <div className="dashboard-header-actions">
-            <button className="dashboard-filter-chip">
-              Today&apos;s Priorities
-              <ChevronDown size={14} />
-            </button>
-            <button className="dashboard-grid-button" aria-label="Dashboard layout">
-              <LayoutGrid size={16} />
-            </button>
+        </div>
+      ) : (
+        <div className="lofty-shell-section">
+          <div className="lofty-shell-toolbar">
             <button className="secondary-button" onClick={onReset}>
               Start another setup
             </button>
           </div>
+          <div className="dashboard-page">
+            <PeopleWorkspace
+              role={role}
+              peopleViewId={peopleViewId}
+              onChangeView={setPeopleViewId}
+              people={peopleViewItems}
+            />
+          </div>
         </div>
-
-        {dashboardRouteActive ? (
-          <DashboardHome
-            updates={dashboardUpdates}
-            newLeads={newLeads}
-            keepInTouchLeads={keepInTouchLeads}
-            opportunityLeads={opportunityLeads}
-            opportunityCounts={opportunityCounts}
-            tasks={tasks}
-            taskCounts={taskCounts}
-            appointments={appointments}
-            showings={showings}
-            transactions={transactions}
-            listings={myListings}
-            hotSheets={hotSheetItems}
-            widgetAvailability={widgetAvailability}
-          />
-        ) : activeSubfeature?.id === "people" ? (
-          <PeopleWorkspace
-            role={role}
-            peopleViewId={peopleViewId}
-            onChangeView={setPeopleViewId}
-            people={peopleViewItems}
-          />
-        ) : (
-          <SubfeatureWorkspace
-            role={role}
-            card={activeCardGroup?.card ?? null}
-            subfeature={activeSubfeature}
-            optionalCardsRemaining={optionalCardsRemaining}
-            people={people}
-          />
-        )}
-      </div>
-    </section>
+      )}
+    </LoftyLaunchedShell>
   );
 }
 

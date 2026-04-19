@@ -1,0 +1,282 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img {
+  display: block;
+}
+
+.lofty-reset-button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  margin: 0;
+  padding: 0;
+  text-align: inherit;
+}
+
+.lofty-shell-button-link {
+  width: 100%;
+}
+
+.search-controller-wrapper,
+.right-menu-item,
+.right-menu-user-box .com-dropdown-body,
+.switch-account-content .com-dropdown-body,
+.menu-dropdown-header .com-dropdown-body,
+.hidden-items .com-dropdown-body,
+.lofty-shell-button-link {
+  cursor: pointer;
+}
+
+.search-box input,
+.search-box .icon-cancel_bold,
+.header-dropdown a,
+.crm-only-header-menu__item,
+.frozen-utility-panel__close,
+.frozen-utility-panel__action {
+  pointer-events: auto !important;
+}
+
+.lofty-nav-submenu {
+  position: relative;
+}
+
+.crm-only-menu,
+.crm-only-menu .display-items,
+.crm-only-menu .display-cell {
+  overflow: visible !important;
+}
+
+.crm-only-menu .display-cell {
+  position: relative;
+}
+
+.crm-only-menu .display-cell > .menu-dropdown-header > .com-dropdown {
+  left: 0;
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 40;
+}
+
+.lofty-nav-submenu > .com-dropdown-body {
+  width: 100%;
+}
+
+.lofty-nav-submenu__trigger {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.lofty-nav-submenu__arrow {
+  color: #a0a3af;
+  font-size: 12px;
+  margin-left: 12px;
+}
+
+.lofty-nav-submenu__flyout {
+  left: calc(100% - 6px);
+  position: absolute;
+  top: -10px;
+  z-index: 30;
+}
+
+.lofty-nav-submenu__flyout .crm-only-header-menu__dropdown {
+  min-width: 180px;
+}
+
+.crm-only-header-menu__item.is-active .crm-only-header-menu__title,
+.crm-only-header-menu__item.is-active .crm-only-header-menu__icon,
+.launched-brand-button--active {
+  color: var(--primary-color, #3b5cde);
+}
+
+.chime-website-container.is-utility-expanded .crm-only-menu {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.chime-website-container.is-utility-expanded .crm-header-main.crm-headerV2-main {
+  gap: 12px;
+}
+
+.chime-website-container.is-utility-expanded .right-box.lofty-right-box--compact {
+  flex: 0 0 auto;
+}
+
+.chime-website-container.is-utility-expanded .search-controller-wrapper.lofty-search-controller--compact {
+  background-color: transparent;
+  border: 0;
+  border-radius: 8px;
+  justify-content: center;
+  margin-right: 0;
+  padding: 0;
+  width: 36px;
+}
+
+.chime-website-container.is-utility-expanded .search-controller-wrapper.lofty-search-controller--compact:hover {
+  background-color: rgba(59, 92, 222, 0.08);
+}
+
+.right-menu-user-box {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.right-menu-user-box .com-dropdownbox {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.right-menu-user-box .com-dropdown-body {
+  align-items: center;
+  display: flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0 !important;
+  width: 30px;
+}
+
+.right-menu-user-box .right-panel-avatar {
+  margin: 0 auto;
+}
+
+.content-section {
+  background: #f7f8fb;
+  min-height: calc(100vh - var(--H-header, 60px));
+  min-width: 0;
+}
+
+.loft-main-router-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.lofty-shell-content {
+  min-height: 100%;
+  padding: 24px;
+}
+
+.lofty-shell-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.lofty-shell-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.lofty-shell-content .dashboard-page {
+  padding: 0;
+}
+
+.lofty-shell-content .dashboard-page-header {
+  margin-bottom: 24px;
+}
+
+.right-slot-wrapper.is-open {
+  width: 380px !important;
+}
+
+.right-slot-wrapper .frozen-utility-panel {
+  background: #fff;
+  border-left: 1px solid #ebecf1;
+  box-shadow: -8px 0 24px rgba(32, 36, 55, 0.08);
+  color: #515666;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 380px;
+}
+
+.frozen-utility-panel__header {
+  align-items: center;
+  border-bottom: 1px solid #ebecf1;
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 20px;
+}
+
+.frozen-utility-panel__title {
+  color: #202437;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.frozen-utility-panel__close {
+  align-items: center;
+  background: #f6f7fb;
+  border: 0;
+  border-radius: 18px;
+  color: #797e8b;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 18px;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.frozen-utility-panel__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+
+.frozen-utility-panel__body p {
+  line-height: 1.5;
+  margin: 0;
+}
+
+.frozen-utility-panel__action {
+  align-items: center;
+  align-self: flex-start;
+  background: var(--primary-color, #3b5cde);
+  border-radius: 20px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 8px;
+  padding: 10px 16px;
+  text-decoration: none;
+}
+
+.frozen-utility-panel__action:hover {
+  opacity: 0.92;
+}
+
+@media (max-width: 1100px) {
+  .lofty-shell-content {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 768px) {
+  .lofty-shell-content {
+    padding: 14px;
+  }
+}

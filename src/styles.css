@@ -34,11 +34,15 @@
 html,
 body {
   min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto !important;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto !important;
   background:
     radial-gradient(circle at top left, rgba(69, 125, 255, 0.14), transparent 32%),
     radial-gradient(circle at top right, rgba(27, 88, 227, 0.08), transparent 26%),
@@ -69,6 +73,9 @@ a {
 
 .app-shell {
   min-height: 100vh;
+  height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .app-shell--selection {
@@ -76,8 +83,18 @@ a {
   min-height: 100vh;
 }
 
+.app-shell--launched {
+  overflow: hidden;
+}
+
 .page-shell {
+  min-height: 100%;
   padding: 24px 24px 40px;
+}
+
+.page-shell--launched {
+  min-height: 100vh;
+  padding: 0;
 }
 
 .page-shell--selection {
