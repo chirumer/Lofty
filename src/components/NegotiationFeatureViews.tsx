@@ -811,10 +811,6 @@ export function MessagesWorkspace({
                 <RefreshCcw size={16} />
                 Refresh feed
               </button>
-              <button className="secondary-button" onClick={() => void feature.resetDemo()} type="button">
-                <RotateCcw size={16} />
-                Reset demo listing
-              </button>
             </div>
 
             {feature.statusMessage ? (
@@ -961,79 +957,51 @@ export function NegotiationWorkspace({
   onOpenProfileSwitch: () => void;
 }) {
   const viewConfig = getNegotiationViewConfig(profile);
-  const activeProfile = getProfileOption(profile);
+  const [propertyImageVisible, setPropertyImageVisible] = useState(true);
   const difference =
     typeof feature.negotiation.asking_price === "number" &&
     typeof feature.negotiation.current_offer_price === "number"
       ? feature.negotiation.asking_price - feature.negotiation.current_offer_price
       : null;
+  const negotiationStatusLabel =
+    feature.negotiation.status.charAt(0).toUpperCase() + feature.negotiation.status.slice(1);
+  const propertyImageSrc = "/sycamore-property.jpg";
 
   return (
     <div className="lofty-shell-section">
-      <section className="builder-header glass-panel">
-        <div>
+      <section className="builder-header glass-panel negotiation-command-banner">
+        <div className="negotiation-command-copy">
           <span className="section-label">{viewConfig.canManage ? "Negotiation Desk" : "Read Only View"}</span>
           <h1>{viewConfig.title}</h1>
           <p>{viewConfig.description}</p>
 
           <div className="info-band negotiation-hero-info">
-            <p className="metric-card-label">Active Listing</p>
-            <strong className="negotiation-hero-address">{feature.listing.address}</strong>
-            <p className="helper-text">
-              {feature.listing.bedrooms}BR / {feature.listing.bathrooms}BA listed at{" "}
-              {formatCurrency(feature.listing.asking_price)}
-            </p>
-            {feature.listing.description ? <p className="helper-text">{feature.listing.description}</p> : null}
+            <div className="negotiation-hero-copy">
+              <p className="metric-card-label">Active Listing</p>
+              <strong className="negotiation-hero-address">{feature.listing.address}</strong>
+              <p className="helper-text">
+                {feature.listing.bedrooms}BR / {feature.listing.bathrooms}BA listed at{" "}
+                {formatCurrency(feature.listing.asking_price)}
+              </p>
+              {feature.listing.description ? <p className="helper-text">{feature.listing.description}</p> : null}
+            </div>
           </div>
         </div>
 
-        <div className="negotiation-hero-actions">
-          <span className="mini-chip">{activeProfile.label}</span>
-          <button className="secondary-button" onClick={onOpenProfileSwitch} type="button">
-            <ArrowRightLeft size={16} />
-            Switch user
-          </button>
-          {viewConfig.canManage ? (
-            <>
-              <button className="primary-button" onClick={() => void feature.analyze()} type="button">
-                <RefreshCcw size={16} />
-                Analyze now
-              </button>
-              <button className="secondary-button" onClick={() => void feature.resetDemo()} type="button">
-                <RotateCcw size={16} />
-                Reset demo listing
-              </button>
-            </>
-          ) : null}
+        <div className="negotiation-hero-media negotiation-hero-media--banner">
+          {propertyImageVisible ? (
+            <img
+              alt={feature.listing.address}
+              className="negotiation-hero-image"
+              onError={() => setPropertyImageVisible(false)}
+              src={propertyImageSrc}
+            />
+          ) : (
+            <div className="negotiation-hero-image-fallback" aria-hidden="true" />
+          )}
         </div>
       </section>
-
-      <section className="overview-strip negotiation-overview-strip">
-        <div className="overview-card overview-card--summary">
-          <span>Listing</span>
-          <strong>{feature.listing.address}</strong>
-          <p>
-            {feature.listing.bedrooms}BR / {feature.listing.bathrooms}BA listed at{" "}
-            {formatCurrency(feature.listing.asking_price)}
-          </p>
-        </div>
-        <div className="overview-card">
-          <span>Current Offer</span>
-          <strong>{formatCurrency(feature.negotiation.current_offer_price)}</strong>
-          <p>Latest working price detected across chat, email, and call updates.</p>
-        </div>
-        <div className="overview-card">
-          <span>Status</span>
-          <strong>{feature.negotiation.status.charAt(0).toUpperCase() + feature.negotiation.status.slice(1)}</strong>
-          <div className="negotiation-status-wrap">
-            <span className={getStatusClass(feature.negotiation.status)}>
-              <span className="status-dot" />
-              Negotiation {feature.negotiation.status}
-            </span>
-          </div>
-        </div>
-      </section>
-
+      
       <div className="stack-md">
         {!feature.initialized && feature.loading ? (
           <section className="soft-panel negotiation-summary-panel">
@@ -1065,10 +1033,18 @@ export function NegotiationWorkspace({
               <h2>Negotiation Snapshot</h2>
               <p>Track pricing movement, open objections, and the items both sides have already aligned on.</p>
             </div>
-            <span className={getStatusClass(feature.negotiation.status)}>
-              <span className="status-dot" />
-              {feature.negotiation.status.charAt(0).toUpperCase() + feature.negotiation.status.slice(1)}
-            </span>
+            <div className="negotiation-snapshot-actions">
+              <span className={getStatusClass(feature.negotiation.status)}>
+                <span className="status-dot" />
+                {negotiationStatusLabel}
+              </span>
+              {viewConfig.canManage ? (
+                <button className="secondary-button" onClick={() => void feature.analyze()} type="button">
+                  <RefreshCcw size={16} />
+                  Analyze now
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className="stack-md">
@@ -1110,12 +1086,6 @@ export function NegotiationWorkspace({
               <h2>Negotiation Summary</h2>
               <p>Latest extracted state for the agent and client views, refreshed from the shared conversation thread.</p>
             </div>
-            {viewConfig.canManage ? (
-              <button className="secondary-button" onClick={() => void feature.analyze()} type="button">
-                <RefreshCcw size={16} />
-                Analyze now
-              </button>
-            ) : null}
           </div>
 
           <div className="info-band">

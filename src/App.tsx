@@ -1359,31 +1359,17 @@ function LaunchSuccessScreen({
             </div>
           </div>
         ) : activeView === "messages" ? (
-          <>
-            <div className="lofty-shell-toolbar">
-              <button className="secondary-button" onClick={onReset}>
-                Start another setup
-              </button>
-            </div>
-            <MessagesWorkspace
-              profile={activeDemoProfile}
-              feature={negotiationFeature}
-              onOpenProfileSwitch={() => setShowProfileSwitch(true)}
-            />
-          </>
+          <MessagesWorkspace
+            profile={activeDemoProfile}
+            feature={negotiationFeature}
+            onOpenProfileSwitch={() => setShowProfileSwitch(true)}
+          />
         ) : (
-          <>
-            <div className="lofty-shell-toolbar">
-              <button className="secondary-button" onClick={onReset}>
-                Start another setup
-              </button>
-            </div>
-            <NegotiationWorkspace
-              profile={activeDemoProfile}
-              feature={negotiationFeature}
-              onOpenProfileSwitch={() => setShowProfileSwitch(true)}
-            />
-          </>
+          <NegotiationWorkspace
+            profile={activeDemoProfile}
+            feature={negotiationFeature}
+            onOpenProfileSwitch={() => setShowProfileSwitch(true)}
+          />
         )}
       </LoftyLaunchedShell>
       {showProfileSwitch ? (
