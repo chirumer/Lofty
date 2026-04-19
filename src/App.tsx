@@ -19,6 +19,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   AlertCircle,
   ArrowRight,
+  ArrowUpRight,
   Check,
   GripVertical,
   Layers3,
@@ -456,7 +457,8 @@ function App() {
       <main className="page-shell">
         <div className="builder-shell">
           <header className="builder-header">
-            <div>
+            <div className="builder-header-title">
+              <BrandMark className="builder-brand-mark" />
               <h1>Build your platform</h1>
             </div>
           </header>
@@ -494,7 +496,6 @@ function App() {
                 <div className="panel-header">
                   <div>
                     <h2>Active workspace</h2>
-                    <p>Only one card stays active here at a time. Dropping another card replaces it and keeps state saved.</p>
                   </div>
                 </div>
 
@@ -528,13 +529,9 @@ function App() {
 
           <section className="panel launch-summary-panel">
             <LaunchSummary
-              role={selectedRole}
-              selectedCard={selectedCard}
-              selectedSubfeature={selectedSubfeature}
               snapshot={snapshot}
               requiredCardsRemaining={requiredCardsRemaining}
               optionalCardsRemaining={optionalCardsRemaining}
-              lockedCards={lockedCards}
               onLaunch={triggerLaunch}
             />
           </section>
@@ -614,14 +611,6 @@ function RoleSelectionScreen({ onContinue }: { onContinue: (role: RoleDefinition
   return (
     <section className="role-selection-page">
       <div className="setup-window">
-        <div className="setup-window-bar">
-          <div className="window-dots" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
-        </div>
-
         <div className="setup-window-body">
           <div className="selection-heading">
             <h1>Choose your role</h1>
@@ -666,6 +655,14 @@ function RoleSelectionScreen({ onContinue }: { onContinue: (role: RoleDefinition
         </div>
       </div>
     </section>
+  );
+}
+
+function BrandMark({ className = "" }: { className?: string }) {
+  return (
+    <div className={`brand-mark ${className}`.trim()}>
+      <img className="brand-logo-image" src="/image.png" alt="Lofty" />
+    </div>
   );
 }
 
@@ -757,18 +754,40 @@ function LibraryCard({
       className={`library-layer-card ${selected ? "library-layer-card--selected" : ""} ${!available ? "library-layer-card--locked" : ""}`}
       style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.6 : 1 }}
     >
-      <button className="library-layer-main" onClick={onSelect}>
-        <div className="library-layer-heading">
+      <div className="library-tab-bar">
+        <button className="library-layer-main" onClick={onSelect}>
           <div className="library-card-title">
             <span className="library-card-icon">
               <Icon size={16} />
             </span>
             <strong>{card.label}</strong>
           </div>
+        </button>
+
+        <div className="library-tab-actions">
           <span className={`status-dot status-dot--${status === "draft" ? "in-progress" : status}`} />
+          {available ? (
+            <button className="icon-button drag-handle" aria-label={`Drag ${card.label}`} {...listeners} {...attributes}>
+              <GripVertical size={16} />
+            </button>
+          ) : (
+            <button className="icon-button" onClick={onSelect} aria-label={`Why ${card.label} is locked`}>
+              <Lock size={14} />
+            </button>
+          )}
+          <button
+            className={`icon-button library-open-button ${available ? "library-open-button--primary" : ""}`}
+            onClick={available ? onOpen : onSelect}
+            aria-label={available ? `Open ${card.label}` : `Why ${card.label} is locked`}
+          >
+            <ArrowUpRight size={16} />
+          </button>
         </div>
+      </div>
+
+      <div className="library-tab-body">
         <p>{card.description}</p>
-      </button>
+      </div>
 
       <div className="library-layer-meta">
         <span className={`mini-badge ${isCardRequiredForRole(card, roleId) ? "mini-badge--required" : ""}`}>
@@ -776,21 +795,6 @@ function LibraryCard({
         </span>
         <span className={`mini-badge ${status === "built" ? "mini-badge--built" : ""}`}>{statusLabel}</span>
         {!available ? <span className="mini-badge mini-badge--locked">Locked</span> : null}
-      </div>
-
-      <div className="library-layer-actions">
-        {available ? (
-          <button className="icon-button drag-handle" aria-label={`Drag ${card.label}`} {...listeners} {...attributes}>
-            <GripVertical size={16} />
-          </button>
-        ) : (
-          <button className="icon-button" onClick={onSelect}>
-            <Lock size={14} />
-          </button>
-        )}
-        <button className={`mini-action ${available ? "mini-action--primary" : ""}`} onClick={available ? onOpen : onSelect}>
-          {available ? "Open" : "Why locked"}
-        </button>
       </div>
     </div>
   );
@@ -856,13 +860,20 @@ function ActiveCard({
           </div>
           <p>{card.description}</p>
         </div>
-        <div className="chip-wrap">
-          <span className={`mini-badge ${status === "built" ? "mini-badge--built" : ""}`}>
-            {status === "built" ? "Built" : status === "draft" ? "Draft" : "Not started"}
-          </span>
-          <span className={`mini-badge ${isCardRequiredForRole(card, roleId) ? "mini-badge--required" : ""}`}>
-            {isCardRequiredForRole(card, roleId) ? "Required" : "Optional"}
-          </span>
+        <div className="active-card-header-meta">
+          <div className="chip-wrap">
+            <span className={`mini-badge ${status === "built" ? "mini-badge--built" : ""}`}>
+              {status === "built" ? "Built" : status === "draft" ? "Draft" : "Not started"}
+            </span>
+            <span className={`mini-badge ${isCardRequiredForRole(card, roleId) ? "mini-badge--required" : ""}`}>
+              {isCardRequiredForRole(card, roleId) ? "Required" : "Optional"}
+            </span>
+          </div>
+          <div className="chip-wrap">
+            <span className="mini-badge">Enabled {readiness.enabledAllowedSubfeatures.length}</span>
+            <span className="mini-badge">Left {readiness.missingRequiredSubfeatures.length}</span>
+            <span className="mini-badge">Incomplete {readiness.incompleteEnabledSubfeatures.length}</span>
+          </div>
         </div>
       </div>
 
@@ -921,23 +932,10 @@ function ActiveCard({
             })}
           </div>
         </div>
+      </div>
 
-        <div className="active-card-readiness">
-          <div className="info-block">
-            <small>What this card does</small>
-            <strong>{card.whatItDoes}</strong>
-          </div>
-          <div className="info-block">
-            <small>Why it matters</small>
-            <strong>{card.whyItMatters}</strong>
-          </div>
-
-          <div className="readiness-list">
-            <ReadinessRow label="Required subfeatures left" value={readiness.missingRequiredSubfeatures.length} />
-            <ReadinessRow label="Enabled but incomplete" value={readiness.incompleteEnabledSubfeatures.length} />
-            <ReadinessRow label="Enabled subfeatures" value={readiness.enabledAllowedSubfeatures.length} />
-          </div>
-
+      <div className="active-card-footer">
+        <div>
           <div className="readiness-note">
             {readiness.ready ? (
               <>
@@ -951,10 +949,17 @@ function ActiveCard({
               </>
             )}
           </div>
-
+        </div>
+        <div className="active-card-footer-actions">
+          {status === "built" ? (
+            <span className="built-inline-indicator">
+              <Check size={14} />
+              Built
+            </span>
+          ) : null}
           <button className="primary-button build-button" disabled={!readiness.ready} onClick={onBuild}>
             <WandSparkles size={16} />
-            Build this card
+            Build
           </button>
         </div>
       </div>
@@ -962,138 +967,19 @@ function ActiveCard({
   );
 }
 
-function ReadinessRow({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="config-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function LaunchSummary({
-  role,
-  selectedCard,
-  selectedSubfeature,
   snapshot,
   requiredCardsRemaining,
   optionalCardsRemaining,
-  lockedCards,
   onLaunch
 }: {
-  role: RoleDefinition;
-  selectedCard: LibraryCardDefinition | null;
-  selectedSubfeature: SubfeatureDefinition | null;
   snapshot: OnboardingSnapshot;
   requiredCardsRemaining: LibraryCardDefinition[];
   optionalCardsRemaining: LibraryCardDefinition[];
-  lockedCards: LibraryCardDefinition[];
   onLaunch: () => void;
 }) {
   return (
-    <div className="launch-summary-stack">
-      {selectedCard ? (
-        <div className="info-card info-card--layer">
-          <div className="panel-header">
-            <div>
-              <h2>{selectedCard.label}</h2>
-              <p>{selectedCard.description}</p>
-            </div>
-            <span className={`mini-badge ${(snapshot.cardStates[selectedCard.id] ?? "not-started") === "built" ? "mini-badge--built" : ""}`}>
-              {snapshot.cardStates[selectedCard.id] === "built"
-                ? "Built"
-                : snapshot.cardStates[selectedCard.id] === "draft"
-                  ? "Draft"
-                  : "Not started"}
-            </span>
-          </div>
-
-          <div className="info-block">
-            <small>What this card does</small>
-            <strong>{selectedCard.whatItDoes}</strong>
-          </div>
-          <div className="info-block">
-            <small>Why it matters</small>
-            <strong>{selectedCard.whyItMatters}</strong>
-          </div>
-          <div className="info-grid">
-            <div>
-              <small>Required or optional</small>
-              <strong>{selectedCard.requiredFor.includes(role.id) ? "Required" : "Optional"}</strong>
-            </div>
-            <div>
-              <small>Role access</small>
-              <strong>{selectedCard.allowedRoles.includes(role.id) ? role.name : "Locked for this role"}</strong>
-            </div>
-          </div>
-          <div className="info-tip">
-            <span>{selectedCard.tip}</span>
-          </div>
-
-          {selectedSubfeature ? (
-            <div className="subfeature-detail-card">
-              <small>Selected subfeature</small>
-              <strong>{selectedSubfeature.name}</strong>
-              <p>{selectedSubfeature.description}</p>
-              <div className="chip-wrap">
-                {selectedSubfeature.requiredFor.includes(role.id) ? (
-                  <span className="mini-chip mini-chip--warning">Required for this role</span>
-                ) : null}
-                <span className="mini-chip">{selectedSubfeature.setupSummary}</span>
-              </div>
-              <p className="subfeature-example">{selectedSubfeature.example}</p>
-            </div>
-          ) : (
-            <div className="subfeature-detail-card">
-              <small>Current focus</small>
-              <strong>Select a subfeature</strong>
-              <p>The right panel will explain what that subfeature does and why you might turn it on.</p>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="info-card info-card--role">
-          <div className="panel-header">
-            <div>
-              <h2>{role.name}</h2>
-              <p>{role.whatYouSee}</p>
-            </div>
-          </div>
-          <div className="info-block">
-            <small>Setup focus</small>
-            <strong>{role.setupFocus}</strong>
-          </div>
-          <ul className="plain-list">
-            {role.accessSummary.map((item) => (
-              <li key={item}>
-                <Check size={14} />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-        <div className="info-card">
-          <div className="panel-header">
-            <div>
-              <h2>Locked cards</h2>
-            <p>These stay disabled because of role or permission limits.</p>
-          </div>
-        </div>
-        <div className="chip-wrap">
-          {lockedCards.length ? (
-            lockedCards.map((card) => (
-              <span key={card.id} className="mini-chip">
-                {card.label}
-              </span>
-            ))
-          ) : (
-            <span className="muted-copy">This role can use the full card library.</span>
-          )}
-        </div>
-      </div>
-
+    <div className="launch-summary-stack launch-summary-stack--solo">
       <div className="launch-card">
         <div className="panel-header">
           <div>
@@ -1277,14 +1163,7 @@ function LaunchSuccessScreen({
   return (
     <section className="launched-site">
       <header className="launched-site-header">
-        <div className="brand-mark launched-brand-mark">
-          <div className="brand-logo">
-            <span className="brand-cut" />
-          </div>
-          <div className="brand-copy brand-copy--single">
-            <strong>Lofty</strong>
-          </div>
-        </div>
+        <BrandMark className="launched-brand-mark" />
 
         {launchedCards.length ? (
           <nav className="launched-nav" aria-label="Website navigation">
