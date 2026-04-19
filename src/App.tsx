@@ -82,6 +82,7 @@ import type {
   SubfeatureDefinition
 } from "./types";
 import LoftyLaunchedShell from "./components/LoftyLaunchedShell";
+import SmartPlansWorkspace from "./components/SmartPlansWorkspace";
 import {
   getProfileOption,
   MessagesWorkspace,
@@ -1588,6 +1589,9 @@ function LaunchSuccessScreen({
     if (activeView === "crm-people" && !launchedSubfeatureIds.has("people")) {
       setActiveView("home");
     }
+    if (activeView === "automation-smart-plans" && !launchedSubfeatureIds.has("smart-plans")) {
+      setActiveView("home");
+    }
   }, [activeView, launchedSubfeatureIds]);
 
   useEffect(() => {
@@ -1688,6 +1692,7 @@ function LaunchSuccessScreen({
         onNavigateMessages={() => setActiveView("messages")}
         onNavigateNegotiation={() => setActiveView("negotiation")}
         onNavigatePeople={() => setActiveView("crm-people")}
+        onNavigateSmartPlans={() => setActiveView("automation-smart-plans")}
         onNavigateListings={() => {
           setWebsiteGuideStep("idle");
           setActiveView("listings");
@@ -1804,6 +1809,10 @@ function LaunchSuccessScreen({
             feature={negotiationFeature}
             onOpenProfileSwitch={() => setShowProfileSwitch(true)}
           />
+        ) : activeView === "automation-smart-plans" ? (
+          <div className="lofty-shell-section">
+            <SmartPlansWorkspace role={role} />
+          </div>
         ) : activeView === "listings" ? (
           <ListingsWorkspace
             mlsFeeds={launchedMlsFeeds}
