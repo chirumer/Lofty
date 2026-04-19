@@ -491,7 +491,7 @@ function UtilityPanel({
           ×
         </button>
       </div>
-      <div className="frozen-utility-panel__body">
+      <div className={`frozen-utility-panel__body${customContent ? " frozen-utility-panel__body--custom" : ""}`}>
         {customContent ? (
           customContent.content
         ) : (

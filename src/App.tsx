@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   closestCenter,
@@ -81,6 +81,7 @@ import type {
   RoleId,
   SubfeatureDefinition
 } from "./types";
+import AICopilotsPanel from "./components/AICopilotsPanel";
 import LoftyLaunchedShell from "./components/LoftyLaunchedShell";
 import SmartPlansWorkspace from "./components/SmartPlansWorkspace";
 import {
@@ -91,6 +92,14 @@ import {
   ProfileSwitchModal,
   useNegotiationFeatureState
 } from "./components/NegotiationFeatureViews";
+import {
+  buildIdxBuilderStarterPrompt,
+  getDefaultCopilotModelId,
+  isCopilotModelId,
+  type CopilotChatMessage,
+  type CopilotChatResponse,
+  type CopilotModelId
+} from "@/lib/ai-copilots";
 import { DEMO_LISTING_ID } from "@/lib/constants";
 import { formatCurrency } from "@/lib/utils";
 import testUser from "./config/test-user.json";
@@ -100,6 +109,8 @@ import dialog1Image from "../dialog1.png";
 import dialog2Image from "../dialog2.png";
 
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
+const COPILOT_STORAGE_KEY = "lofty-ai-copilots-panel-v1";
+const COPILOT_CLIENT_TIMEOUT_MS = 30000;
 
 type MlsFeedFormValues = {
   sourceName: string;
@@ -395,6 +406,29 @@ function createBuilderSnapshot(roleId: RoleId, mode: "empty" | "auto"): Onboardi
     subfeatureConfigs: mode === "auto" ? buildAutoselectedConfigStore(roleId) : buildInitialConfigStore(roleId),
     phase: "builder"
   });
+}
+
+function createCopilotMessage(role: CopilotChatMessage["role"], content: string): CopilotChatMessage {
+  return {
+    id: `copilot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    content: content.trim(),
+    createdAt: new Date().toISOString()
+  };
+}
+
+function isCopilotChatMessage(value: unknown): value is CopilotChatMessage {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<CopilotChatMessage>;
+  return (
+    typeof candidate.id === "string" &&
+    (candidate.role === "user" || candidate.role === "assistant") &&
+    typeof candidate.content === "string" &&
+    typeof candidate.createdAt === "string"
+  );
 }
 
 function getCardReadiness(snapshot: OnboardingSnapshot, card: LibraryCardDefinition, roleId: RoleId) {
@@ -1504,6 +1538,13 @@ function LaunchSuccessScreen({
   const [contentEditor, setContentEditor] = useState<ContentEditorState>(null);
   const [showIdxPreview, setShowIdxPreview] = useState(false);
   const [websiteGuideStep, setWebsiteGuideStep] = useState<WebsiteGuideStep>("idle");
+  const [copilotSelectedModelId, setCopilotSelectedModelId] = useState<CopilotModelId>(getDefaultCopilotModelId());
+  const [copilotMessages, setCopilotMessages] = useState<CopilotChatMessage[]>([]);
+  const [copilotDraft, setCopilotDraft] = useState("");
+  const [copilotIsSending, setCopilotIsSending] = useState(false);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [copilotHydrated, setCopilotHydrated] = useState(false);
+  const copilotRequestIdRef = useRef(0);
   const negotiationFeature = useNegotiationFeatureState(DEMO_LISTING_ID);
 
   const people = useMemo(() => getDashboardPeopleForRole(role.id), [role.id]);
@@ -1562,6 +1603,9 @@ function LaunchSuccessScreen({
   const launchedSubfeatureIds = new Set(
     launchedCards.flatMap(({ enabledSubfeatures }) => enabledSubfeatures.map((subfeature) => subfeature.id))
   );
+  const enabledFeatureNames = Array.from(
+    new Set(launchedCards.flatMap(({ enabledSubfeatures }) => enabledSubfeatures.map((subfeature) => subfeature.name)))
+  );
   const launchedMlsFeeds = snapshot.launchedMlsFeeds ?? [];
   const launchedPocketListings = snapshot.launchedListings ?? [];
   const derivedMlsListings = useMemo(() => deriveListingsFromMlsFeeds(launchedMlsFeeds), [launchedMlsFeeds]);
@@ -1569,6 +1613,9 @@ function LaunchSuccessScreen({
     ...derivedMlsListings.filter((listing) => listing.enabled),
     ...launchedPocketListings.filter((listing) => listing.enabled)
   ];
+  const websiteBuildingConfig = snapshot.subfeatureConfigs["ai-copilots"]?.["website-building-agent"] ?? {};
+  const siteGoal = typeof websiteBuildingConfig.siteGoal === "string" ? websiteBuildingConfig.siteGoal : undefined;
+  const marketFocus = typeof websiteBuildingConfig.marketFocus === "string" ? websiteBuildingConfig.marketFocus : undefined;
   const canOpenListings = launchedSubfeatureIds.has("my-listings");
   const canOpenWebsites = launchedSubfeatureIds.has("websites");
   const widgetAvailability = {
@@ -1584,6 +1631,33 @@ function LaunchSuccessScreen({
     listings: canOpenListings,
     hotSheets: launchedSubfeatureIds.has("websites")
   };
+
+  const copilotContext = useMemo(
+    () => ({
+      activeView,
+      roleName: role.name,
+      enabledFeatures: enabledFeatureNames,
+      siteGoal,
+      marketFocus,
+      enabledListings:
+        activeView === "idx-builder"
+          ? enabledListings.map((listing) => ({
+              id: listing.id,
+              type: getListingTypeLabel(listing.type),
+              headline: listing.headline,
+              address: listing.address,
+              city: listing.city,
+              state: listing.state,
+              price: listing.price,
+              bedrooms: listing.bedrooms,
+              bathrooms: listing.bathrooms,
+              squareFeet: listing.squareFeet,
+              neighborhood: listing.neighborhood
+            }))
+          : undefined
+    }),
+    [activeView, enabledFeatureNames, enabledListings, marketFocus, role.name, siteGoal]
+  );
 
   useEffect(() => {
     if (activeView === "crm-people" && !launchedSubfeatureIds.has("people")) {
@@ -1608,6 +1682,52 @@ function LaunchSuccessScreen({
       setWebsiteGuideStep("idle");
     }
   }, [activeView, websiteGuideStep]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COPILOT_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as {
+        selectedModelId?: string;
+        messages?: unknown[];
+        draft?: string;
+      };
+
+      if (parsed.selectedModelId && isCopilotModelId(parsed.selectedModelId)) {
+        setCopilotSelectedModelId(parsed.selectedModelId);
+      }
+
+      if (Array.isArray(parsed.messages)) {
+        setCopilotMessages(parsed.messages.filter(isCopilotChatMessage));
+      }
+
+      if (typeof parsed.draft === "string") {
+        setCopilotDraft(parsed.draft);
+      }
+    } catch {
+      window.localStorage.removeItem(COPILOT_STORAGE_KEY);
+    } finally {
+      setCopilotHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!copilotHydrated) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      COPILOT_STORAGE_KEY,
+      JSON.stringify({
+        selectedModelId: copilotSelectedModelId,
+        messages: copilotMessages,
+        draft: copilotDraft
+      })
+    );
+  }, [copilotDraft, copilotHydrated, copilotMessages, copilotSelectedModelId]);
 
   function updateLaunchedMlsFeeds(updater: (current: LaunchedMlsFeed[]) => LaunchedMlsFeed[]) {
     onUpdateSnapshot((current) => ({
@@ -1680,6 +1800,115 @@ function LaunchSuccessScreen({
     setShowProfileSwitch(false);
   }
 
+  async function sendCopilotMessage(promptOverride?: string) {
+    const nextPrompt = (promptOverride ?? copilotDraft).trim();
+    if (!nextPrompt || copilotIsSending) {
+      return;
+    }
+
+    const requestId = copilotRequestIdRef.current + 1;
+    copilotRequestIdRef.current = requestId;
+    const userMessage = createCopilotMessage("user", nextPrompt);
+    const nextMessages = [...copilotMessages, userMessage];
+
+    setCopilotMessages(nextMessages);
+    setCopilotError(null);
+    setCopilotIsSending(true);
+
+    if (!promptOverride) {
+      setCopilotDraft("");
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), COPILOT_CLIENT_TIMEOUT_MS);
+      const response = await fetch("/api/ai-copilots/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          modelId: copilotSelectedModelId,
+          messages: nextMessages,
+          context: copilotContext
+        })
+      }).finally(() => {
+        window.clearTimeout(timeoutId);
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as CopilotChatResponse;
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      if (!response.ok || !payload.message) {
+        if (!promptOverride) {
+          setCopilotDraft(nextPrompt);
+        }
+        setCopilotError(payload.error ?? "AI Copilots could not respond right now. Please try again.");
+        return;
+      }
+
+      setCopilotMessages([...nextMessages, payload.message]);
+    } catch (error) {
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      if (!promptOverride) {
+        setCopilotDraft(nextPrompt);
+      }
+
+      if (error instanceof Error && error.name === "AbortError") {
+        setCopilotError("AI Copilots timed out waiting for the server. Please try again.");
+        return;
+      }
+
+      const fallbackMessage =
+        error instanceof Error && error.message
+          ? `AI Copilots could not reach the Lofty AI service (${error.message}).`
+          : "AI Copilots could not reach the Lofty AI service.";
+
+      setCopilotError(`${fallbackMessage} Please check the app connection and try again.`);
+    } finally {
+      if (requestId === copilotRequestIdRef.current) {
+        setCopilotIsSending(false);
+      }
+    }
+  }
+
+  function handleStartBuildingPrompt() {
+    const starterPrompt = buildIdxBuilderStarterPrompt({
+      siteGoal,
+      marketFocus,
+      listings: enabledListings.map((listing) => ({
+        id: listing.id,
+        type: getListingTypeLabel(listing.type),
+        headline: listing.headline,
+        address: listing.address,
+        city: listing.city,
+        state: listing.state,
+        price: listing.price,
+        bedrooms: listing.bedrooms,
+        bathrooms: listing.bathrooms,
+        squareFeet: listing.squareFeet,
+        neighborhood: listing.neighborhood
+      }))
+    });
+
+    void sendCopilotMessage(starterPrompt);
+  }
+
+  function handleClearCopilotChat() {
+    copilotRequestIdRef.current += 1;
+    setCopilotMessages([]);
+    setCopilotDraft("");
+    setCopilotError(null);
+    setCopilotIsSending(false);
+  }
+
   return (
     <>
       <LoftyLaunchedShell
@@ -1711,25 +1940,36 @@ function LaunchSuccessScreen({
             : null
         }
         forcedUtilityId={activeView === "idx-builder" ? "ai" : undefined}
-        utilityPanelOverride={
-          activeView === "idx-builder"
-            ? {
-                itemId: "ai",
-                title: "AI Copilots",
-                content: (
-                  <div className="idx-builder-sidebar">
-                    <span className="section-kicker">IDX Builder</span>
-                    <h3>AI Copilots are standing by</h3>
-                    <p>The builder canvas is ready. Kick off the first pass when you want the website draft generated.</p>
-                    <button className="primary-button idx-builder-sidebar__button">
-                      <WandSparkles size={16} />
-                      Start building
-                    </button>
-                  </div>
-                )
-              }
-            : null
-        }
+        utilityPanelOverride={{
+          itemId: "ai",
+          title: "AI Copilots",
+          content: (
+            <AICopilotsPanel
+              activeView={activeView}
+              draft={copilotDraft}
+              error={copilotError}
+              isSending={copilotIsSending}
+              messages={copilotMessages}
+              selectedModelId={copilotSelectedModelId}
+              enabledListingCount={enabledListings.length}
+              onDraftChange={(value) => {
+                setCopilotDraft(value);
+                if (copilotError) {
+                  setCopilotError(null);
+                }
+              }}
+              onModelChange={(modelId) => {
+                setCopilotSelectedModelId(modelId);
+                if (copilotError) {
+                  setCopilotError(null);
+                }
+              }}
+              onClearChat={handleClearCopilotChat}
+              onSend={() => void sendCopilotMessage()}
+              onStartBuilding={handleStartBuildingPrompt}
+            />
+          )
+        }}
         shellGuidedOverlay={
           websiteGuideStep === "blocked"
             ? {

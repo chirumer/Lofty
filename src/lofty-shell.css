@@ -372,7 +372,14 @@ img {
   flex: 1;
   flex-direction: column;
   gap: 14px;
+  min-height: 0;
   padding: 20px;
+}
+
+.frozen-utility-panel__body--custom {
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
 }
 
 .frozen-utility-panel__body p {
