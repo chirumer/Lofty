@@ -36,6 +36,18 @@ type ShellHeaderItem = {
   submenu?: ShellSubmenuItem[];
 };
 
+type UtilityItem = {
+  id: string;
+  icon: string;
+  badge?: string;
+  description?: string;
+  extraClass?: string;
+  href?: string;
+  title: string;
+  view?: Extract<LaunchedShellView, "messages" | "negotiation">;
+  opensProfileSwitch?: boolean;
+};
+
 const headerItems: ShellHeaderItem[] = [
   {
     label: "CRM",
@@ -120,7 +132,28 @@ const headerItems: ShellHeaderItem[] = [
   }
 ];
 
-const utilityItems = [
+const utilityItems: UtilityItem[] = [
+  {
+    id: "messages",
+    icon: "icon-message_01",
+    title: "Messages",
+    description: "Open the live negotiation thread and send chat, email, or call-note updates.",
+    view: "messages"
+  },
+  {
+    id: "negotiation",
+    icon: "icon-offer_01",
+    title: "Negotiation",
+    description: "Open the negotiation dashboard to track pricing, concerns, and timeline activity.",
+    view: "negotiation"
+  },
+  {
+    id: "change-user",
+    icon: "icon-re_01",
+    title: "Switch User",
+    description: "Choose whether the experience is viewed as the buyer, seller, or one of the agent profiles.",
+    opensProfileSwitch: true
+  },
   {
     id: "ai",
     icon: "icon-ai-AI",
@@ -388,19 +421,28 @@ function UtilityPanel({ item, onClose }: { item: (typeof utilityItems)[number] |
 export default function LoftyLaunchedShell({
   activeView,
   children,
+  activeProfileEmail,
+  activeProfileName,
   onNavigateHome,
-  onNavigatePeople
+  onNavigateMessages,
+  onNavigateNegotiation,
+  onNavigatePeople,
+  onOpenProfileSwitch
 }: {
   activeView: LaunchedShellView;
   children: ReactNode;
+  activeProfileEmail: string;
+  activeProfileName: string;
   onNavigateHome: () => void;
+  onNavigateMessages: () => void;
+  onNavigateNegotiation: () => void;
   onNavigatePeople: () => void;
+  onOpenProfileSwitch: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [activeUtilityId, setActiveUtilityId] = useState<string | null>(null);
   const isUtilityExpanded = Boolean(activeUtilityId);
 
@@ -417,7 +459,34 @@ export default function LoftyLaunchedShell({
       return;
     }
 
-    onNavigatePeople();
+    if (view === "crm-people") {
+      onNavigatePeople();
+      return;
+    }
+
+    if (view === "messages") {
+      onNavigateMessages();
+      return;
+    }
+
+    onNavigateNegotiation();
+  }
+
+  function handleUtilityItemClick(item: UtilityItem) {
+    if (item.view) {
+      setActiveUtilityId(null);
+      handleNavigate(item.view);
+      return;
+    }
+
+    if (item.opensProfileSwitch) {
+      setActiveUtilityId(null);
+      setUserMenuOpen(false);
+      onOpenProfileSwitch();
+      return;
+    }
+
+    setActiveUtilityId((current) => (current === item.id ? null : item.id));
   }
 
   useEffect(() => {
@@ -425,7 +494,6 @@ export default function LoftyLaunchedShell({
       if (!rootRef.current?.contains(event.target as Node)) {
         setOpenMenu(null);
         setUserMenuOpen(false);
-        setAccountMenuOpen(false);
         setActiveUtilityId(null);
       }
     }
@@ -435,7 +503,6 @@ export default function LoftyLaunchedShell({
         setOpenMenu(null);
         setSearchOpen(false);
         setUserMenuOpen(false);
-        setAccountMenuOpen(false);
         setActiveUtilityId(null);
       }
     }
@@ -589,7 +656,7 @@ export default function LoftyLaunchedShell({
                       {...attrs.user}
                       className="user-logo  vertical"
                       src="/frozen-lofty/Lofty_files/original_fa6d7ff1-a294-4b2a-b55a-0d47949a68b8.jpeg"
-                      alt="Baylee Rhoades"
+                      alt={activeProfileName}
                     />
                   </div>
                 </button>
@@ -602,14 +669,14 @@ export default function LoftyLaunchedShell({
                             <img
                               {...attrs.account}
                               src="/frozen-lofty/Lofty_files/original_fa6d7ff1-a294-4b2a-b55a-0d47949a68b8.jpeg"
-                              alt="Baylee Rhoades"
+                              alt={activeProfileName}
                             />
                           </div>
                           <div {...attrs.account} className="switch-account-name">
-                            Baylee Rhoades
+                            {activeProfileName}
                           </div>
                           <div {...attrs.account} className="switch-account-email">
-                            baylee.rhoades@lofty.com
+                            {activeProfileEmail}
                           </div>
                         </div>
                         <div {...attrs.account} className="switch-account-content">
@@ -617,41 +684,20 @@ export default function LoftyLaunchedShell({
                             <span {...attrs.account} className="icon2017 icon-people_add"></span>
                             Add Account
                           </div>
-                          <div {...attrs.account} className="com-dropdownbox">
-                            <div className="com-dropdown-mask" style={dropdownMaskStyle(accountMenuOpen)}></div>
-                            <button
-                              {...attrs.account}
-                              className="com-dropdown-body lofty-reset-button"
-                              type="button"
-                              onClick={() => setAccountMenuOpen((open) => !open)}
-                            >
-                              <div {...attrs.account} className="switch-btn chime-btn white-btn">
-                                <span {...attrs.account} className="icon2017 icon-re_01"></span>
-                                Switch Account
-                              </div>
-                            </button>
-                            <div className="com-dropdown switch-account-list-dp" style={{ display: accountMenuOpen ? "block" : "none" }}>
-                              <div className="com-dropdown-content">
-                                <div {...attrs.account} className="multi-account-list">
-                                  <div {...attrs.account} className="account-info">
-                                    <div {...attrs.account} className="account-info-detail active">
-                                      <span {...attrs.account} className="name">
-                                        Baylee Rhoades
-                                      </span>
-                                    </div>
-                                    <div {...attrs.account} className="account-info mini">
-                                      <div {...attrs.account} className="account-info-detail">
-                                        <span {...attrs.account} className="name">
-                                          Lofty
-                                        </span>
-                                        <span {...attrs.account} className="icon2017 icon-checked_bold"></span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
+                          <button
+                            {...attrs.account}
+                            className="com-dropdown-body lofty-reset-button"
+                            type="button"
+                            onClick={() => {
+                              setUserMenuOpen(false);
+                              onOpenProfileSwitch();
+                            }}
+                          >
+                            <div {...attrs.account} className="switch-btn chime-btn white-btn">
+                              <span {...attrs.account} className="icon2017 icon-re_01"></span>
+                              Switch Account
                             </div>
-                          </div>
+                          </button>
                         </div>
                       </div>
                       <ul {...attrs.user} className="headerV2-user-list">
@@ -718,9 +764,13 @@ export default function LoftyLaunchedShell({
                 <button
                   key={item.id}
                   {...attrs.utility}
-                  className={`right-menu-item lofty-reset-button${activeUtilityId === item.id ? " active" : ""}`}
+                  className={`right-menu-item lofty-reset-button${
+                    activeUtilityId === item.id || item.view === activeView ? " active" : ""
+                  }`}
                   type="button"
-                  onClick={() => setActiveUtilityId((current) => (current === item.id ? null : item.id))}
+                  onClick={() => handleUtilityItemClick(item)}
+                  title={item.title}
+                  aria-label={item.title}
                 >
                   <i
                     {...attrs.utility}

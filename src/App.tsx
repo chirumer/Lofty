@@ -73,6 +73,15 @@ import type {
   SubfeatureDefinition
 } from "./types";
 import LoftyLaunchedShell from "./components/LoftyLaunchedShell";
+import {
+  getProfileOption,
+  MessagesWorkspace,
+  type NegotiationShellProfile,
+  NegotiationWorkspace,
+  ProfileSwitchModal,
+  useNegotiationFeatureState
+} from "./components/NegotiationFeatureViews";
+import { DEMO_LISTING_ID } from "@/lib/constants";
 
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
 
@@ -1180,9 +1189,13 @@ function LaunchSuccessScreen({
 
   const [activeView, setActiveView] = useState<LaunchedShellView>("home");
   const [peopleViewId, setPeopleViewId] = useState<LeadViewId>("all-leads");
+  const [activeDemoProfile, setActiveDemoProfile] = useState<NegotiationShellProfile>("seller_agent");
+  const [showProfileSwitch, setShowProfileSwitch] = useState(false);
+  const negotiationFeature = useNegotiationFeatureState(DEMO_LISTING_ID);
 
   const people = useMemo(() => getDashboardPeopleForRole(role.id), [role.id]);
   const peopleViewItems = getPeopleViewList(peopleViewId, role.id);
+  const activeDemoAccount = getProfileOption(activeDemoProfile);
   const greetingName =
     role.id === "company-owner"
       ? "James"
@@ -1268,13 +1281,24 @@ function LaunchSuccessScreen({
     }
   }, [activeView, launchedSubfeatureIds]);
 
+  function handleSelectDemoProfile(profile: NegotiationShellProfile) {
+    setActiveDemoProfile(profile);
+    setShowProfileSwitch(false);
+  }
+
   return (
-    <LoftyLaunchedShell
-      activeView={activeView}
-      onNavigateHome={() => setActiveView("home")}
-      onNavigatePeople={() => setActiveView("crm-people")}
-    >
-      {activeView === "home" ? (
+    <>
+      <LoftyLaunchedShell
+        activeView={activeView}
+        activeProfileEmail={activeDemoAccount.email}
+        activeProfileName={activeDemoAccount.name}
+        onNavigateHome={() => setActiveView("home")}
+        onNavigateMessages={() => setActiveView("messages")}
+        onNavigateNegotiation={() => setActiveView("negotiation")}
+        onNavigatePeople={() => setActiveView("crm-people")}
+        onOpenProfileSwitch={() => setShowProfileSwitch(true)}
+      >
+        {activeView === "home" ? (
         <div className="lofty-shell-section">
           <div className="dashboard-page">
             <div className="dashboard-page-header">
@@ -1318,24 +1342,58 @@ function LaunchSuccessScreen({
             />
           </div>
         </div>
-      ) : (
-        <div className="lofty-shell-section">
-          <div className="lofty-shell-toolbar">
-            <button className="secondary-button" onClick={onReset}>
-              Start another setup
-            </button>
+        ) : activeView === "crm-people" ? (
+          <div className="lofty-shell-section">
+            <div className="lofty-shell-toolbar">
+              <button className="secondary-button" onClick={onReset}>
+                Start another setup
+              </button>
+            </div>
+            <div className="dashboard-page">
+              <PeopleWorkspace
+                role={role}
+                peopleViewId={peopleViewId}
+                onChangeView={setPeopleViewId}
+                people={peopleViewItems}
+              />
+            </div>
           </div>
-          <div className="dashboard-page">
-            <PeopleWorkspace
-              role={role}
-              peopleViewId={peopleViewId}
-              onChangeView={setPeopleViewId}
-              people={peopleViewItems}
+        ) : activeView === "messages" ? (
+          <>
+            <div className="lofty-shell-toolbar">
+              <button className="secondary-button" onClick={onReset}>
+                Start another setup
+              </button>
+            </div>
+            <MessagesWorkspace
+              profile={activeDemoProfile}
+              feature={negotiationFeature}
+              onOpenProfileSwitch={() => setShowProfileSwitch(true)}
             />
-          </div>
-        </div>
-      )}
-    </LoftyLaunchedShell>
+          </>
+        ) : (
+          <>
+            <div className="lofty-shell-toolbar">
+              <button className="secondary-button" onClick={onReset}>
+                Start another setup
+              </button>
+            </div>
+            <NegotiationWorkspace
+              profile={activeDemoProfile}
+              feature={negotiationFeature}
+              onOpenProfileSwitch={() => setShowProfileSwitch(true)}
+            />
+          </>
+        )}
+      </LoftyLaunchedShell>
+      {showProfileSwitch ? (
+        <ProfileSwitchModal
+          activeProfile={activeDemoProfile}
+          onClose={() => setShowProfileSwitch(false)}
+          onSelectProfile={handleSelectDemoProfile}
+        />
+      ) : null}
+    </>
   );
 }
 
