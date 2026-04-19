@@ -1709,162 +1709,163 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                     <X size={18} />
                   </button>
                 </div>
-
-                {drawer.definition.id === "populate-variable" ? (
-                  <div className="smartplans-form-stack">
-                    <label className="smartplans-form-field">
-                      <span>Variable Name</span>
-                      <input
-                        type="text"
-                        value={String(drawer.draft.variableName ?? "")}
-                        onChange={(event) =>
-                          setDrawer({
-                            ...drawer,
-                            draft: {
-                              ...drawer.draft,
-                              variableName: event.target.value
-                            }
-                          })
-                        }
-                      />
-                    </label>
-                    <div className="smartplans-variable-preview">
-                      <span>Token preview</span>
-                      <strong>{buildVariableToken(normalizeVariableBaseName(String(drawer.draft.variableName ?? "variable")))}</strong>
-                    </div>
-                    <label className="smartplans-form-field">
-                      <span>Source</span>
-                      <select
-                        value={String(drawer.draft.source ?? "Calendar")}
-                        onChange={(event) =>
-                          setDrawer({
-                            ...drawer,
-                            draft: {
-                              ...drawer.draft,
-                              source: event.target.value
-                            }
-                          })
-                        }
-                      >
-                        {populateVariableSources.map((source) => (
-                          <option key={source} value={source}>
-                            {source}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="smartplans-form-field">
-                      <span>Calendar Selection</span>
-                      <select
-                        value={String(drawer.draft.calendarSelection ?? "sameDayAvailability")}
-                        onChange={(event) =>
-                          setDrawer({
-                            ...drawer,
-                            draft: {
-                              ...drawer.draft,
-                              calendarSelection: event.target.value
-                            }
-                          })
-                        }
-                      >
-                        {calendarVariableOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="smartplans-form-field">
-                      <span>Formatting Type</span>
-                      <select
-                        value={String(drawer.draft.formatType ?? "continuous time availability")}
-                        onChange={(event) =>
-                          setDrawer({
-                            ...drawer,
-                            draft: {
-                              ...drawer.draft,
-                              formatType: event.target.value
-                            }
-                          })
-                        }
-                      >
-                        {variableFormatOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                ) : (
-                  <>
-                    {(drawer.definition.id === "auto-email" || drawer.definition.id === "auto-text") && availableDrawerVariables.length ? (
-                      <div className="smartplans-variable-insert-panel">
-                        <div className="smartplans-variable-insert-header">
-                          <strong>Populate Variables</strong>
-                          {drawer.definition.id === "auto-email" ? (
-                            <select
-                              value={drawer.insertTargetFieldId ?? "body"}
-                              onChange={(event) =>
-                                setDrawer({
-                                  ...drawer,
-                                  insertTargetFieldId: event.target.value
-                                })
+                <div className="smartplans-drawer-body">
+                  {drawer.definition.id === "populate-variable" ? (
+                    <div className="smartplans-form-stack">
+                      <label className="smartplans-form-field">
+                        <span>Variable Name</span>
+                        <input
+                          type="text"
+                          value={String(drawer.draft.variableName ?? "")}
+                          onChange={(event) =>
+                            setDrawer({
+                              ...drawer,
+                              draft: {
+                                ...drawer.draft,
+                                variableName: event.target.value
                               }
-                            >
-                              <option value="subject">Insert into Subject</option>
-                              <option value="body">Insert into Body</option>
-                            </select>
-                          ) : null}
+                            })
+                          }
+                        />
+                      </label>
+                      <div className="smartplans-variable-preview">
+                        <span>Token preview</span>
+                        <strong>{buildVariableToken(normalizeVariableBaseName(String(drawer.draft.variableName ?? "variable")))}</strong>
+                      </div>
+                      <label className="smartplans-form-field">
+                        <span>Source</span>
+                        <select
+                          value={String(drawer.draft.source ?? "Calendar")}
+                          onChange={(event) =>
+                            setDrawer({
+                              ...drawer,
+                              draft: {
+                                ...drawer.draft,
+                                source: event.target.value
+                              }
+                            })
+                          }
+                        >
+                          {populateVariableSources.map((source) => (
+                            <option key={source} value={source}>
+                              {source}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="smartplans-form-field">
+                        <span>Calendar Selection</span>
+                        <select
+                          value={String(drawer.draft.calendarSelection ?? "sameDayAvailability")}
+                          onChange={(event) =>
+                            setDrawer({
+                              ...drawer,
+                              draft: {
+                                ...drawer.draft,
+                                calendarSelection: event.target.value
+                              }
+                            })
+                          }
+                        >
+                          {calendarVariableOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="smartplans-form-field">
+                        <span>Formatting Type</span>
+                        <select
+                          value={String(drawer.draft.formatType ?? "continuous time availability")}
+                          onChange={(event) =>
+                            setDrawer({
+                              ...drawer,
+                              draft: {
+                                ...drawer.draft,
+                                formatType: event.target.value
+                              }
+                            })
+                          }
+                        >
+                          {variableFormatOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  ) : (
+                    <>
+                      {(drawer.definition.id === "auto-email" || drawer.definition.id === "auto-text") && availableDrawerVariables.length ? (
+                        <div className="smartplans-variable-insert-panel">
+                          <div className="smartplans-variable-insert-header">
+                            <strong>Populate Variables</strong>
+                            {drawer.definition.id === "auto-email" ? (
+                              <select
+                                value={drawer.insertTargetFieldId ?? "body"}
+                                onChange={(event) =>
+                                  setDrawer({
+                                    ...drawer,
+                                    insertTargetFieldId: event.target.value
+                                  })
+                                }
+                              >
+                                <option value="subject">Insert into Subject</option>
+                                <option value="body">Insert into Body</option>
+                              </select>
+                            ) : null}
+                          </div>
+                          <div className="smartplans-variable-chip-row">
+                            {availableDrawerVariables.map((variable) => (
+                              <button
+                                key={variable.id}
+                                className="smartplans-variable-chip"
+                                type="button"
+                                onClick={() => {
+                                  const targetFieldId = drawer.definition.id === "auto-email" ? drawer.insertTargetFieldId ?? "body" : "message";
+                                  const currentValue = String(drawer.draft[targetFieldId] ?? "");
+                                  const spacer = currentValue && !currentValue.endsWith(" ") ? " " : "";
+                                  setDrawer({
+                                    ...drawer,
+                                    draft: {
+                                      ...drawer.draft,
+                                      [targetFieldId]: `${currentValue}${spacer}${variable.token}`
+                                    }
+                                  });
+                                }}
+                              >
+                                {variable.token}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                        <div className="smartplans-variable-chip-row">
-                          {availableDrawerVariables.map((variable) => (
-                            <button
-                              key={variable.id}
-                              className="smartplans-variable-chip"
-                              type="button"
-                              onClick={() => {
-                                const targetFieldId = drawer.definition.id === "auto-email" ? drawer.insertTargetFieldId ?? "body" : "message";
-                                const currentValue = String(drawer.draft[targetFieldId] ?? "");
-                                const spacer = currentValue && !currentValue.endsWith(" ") ? " " : "";
+                      ) : null}
+
+                      <div className="smartplans-form-stack">
+                        {drawer.definition.fields.map((field) => (
+                          <label key={field.id} className="smartplans-form-field">
+                            <span>{field.label}</span>
+                            <SmartPlanField
+                              field={field}
+                              value={drawer.draft[field.id]}
+                              onChange={(nextValue) =>
                                 setDrawer({
                                   ...drawer,
                                   draft: {
                                     ...drawer.draft,
-                                    [targetFieldId]: `${currentValue}${spacer}${variable.token}`
+                                    [field.id]: nextValue
                                   }
-                                });
-                              }}
-                            >
-                              {variable.token}
-                            </button>
-                          ))}
-                        </div>
+                                })
+                              }
+                            />
+                          </label>
+                        ))}
                       </div>
-                    ) : null}
-
-                    <div className="smartplans-form-stack">
-                      {drawer.definition.fields.map((field) => (
-                        <label key={field.id} className="smartplans-form-field">
-                          <span>{field.label}</span>
-                          <SmartPlanField
-                            field={field}
-                            value={drawer.draft[field.id]}
-                            onChange={(nextValue) =>
-                              setDrawer({
-                                ...drawer,
-                                draft: {
-                                  ...drawer.draft,
-                                  [field.id]: nextValue
-                                }
-                              })
-                            }
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  </>
-                )}
+                    </>
+                  )}
+                </div>
 
                 <div className="smartplans-drawer-footer">
                   <button className="smartplans-subtle-button" type="button" onClick={() => setDrawer({ type: "none" })}>
@@ -1890,25 +1891,27 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                     <X size={18} />
                   </button>
                 </div>
-                <div className="smartplans-form-stack">
-                  {drawer.definition.fields.map((field) => (
-                    <label key={field.id} className="smartplans-form-field">
-                      <span>{field.label}</span>
-                      <SmartPlanField
-                        field={field}
-                        value={drawer.draft[field.id]}
-                        onChange={(nextValue) =>
-                          setDrawer({
-                            ...drawer,
-                            draft: {
-                              ...drawer.draft,
-                              [field.id]: nextValue
-                            }
-                          })
-                        }
-                      />
-                    </label>
-                  ))}
+                <div className="smartplans-drawer-body">
+                  <div className="smartplans-form-stack">
+                    {drawer.definition.fields.map((field) => (
+                      <label key={field.id} className="smartplans-form-field">
+                        <span>{field.label}</span>
+                        <SmartPlanField
+                          field={field}
+                          value={drawer.draft[field.id]}
+                          onChange={(nextValue) =>
+                            setDrawer({
+                              ...drawer,
+                              draft: {
+                                ...drawer.draft,
+                                [field.id]: nextValue
+                              }
+                            })
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div className="smartplans-drawer-footer">
                   <button className="smartplans-subtle-button" type="button" onClick={() => setDrawer({ type: "none" })}>
