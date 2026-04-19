@@ -1,13 +1,26 @@
 import "./globals.css";
-import { getLoftyDocument } from "../lib/lofty-document";
+import { getLoftyDocumentAssets } from "../lib/lofty-document";
 
-export default function RootLayout() {
-  const { htmlStyle, headInnerHtml, bodyInnerHtml } = getLoftyDocument();
+export default function RootLayout({ children }) {
+  const { htmlStyle, iconHref, inlineStyles, stylesheets, title } = getLoftyDocumentAssets();
 
   return (
-    <html lang="en" suppressHydrationWarning style={htmlStyle}>
-      <head dangerouslySetInnerHTML={{ __html: headInnerHtml }} />
-      <body suppressHydrationWarning dangerouslySetInnerHTML={{ __html: bodyInnerHtml }} />
+    <html lang="en" style={htmlStyle}>
+      <head>
+        <title>{title}</title>
+        <meta
+          name="viewport"
+          content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no"
+        />
+        {iconHref ? <link rel="icon" href={iconHref} /> : null}
+        {stylesheets.map((href) => (
+          <link key={href} rel="stylesheet" href={href} />
+        ))}
+        {inlineStyles.map((cssText, index) => (
+          <style key={index}>{cssText}</style>
+        ))}
+      </head>
+      <body>{children}</body>
     </html>
   );
 }
