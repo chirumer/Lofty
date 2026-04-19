@@ -109,7 +109,7 @@ const headerItems: ShellHeaderItem[] = [
     label: "Automation",
     href: "https://crm.lofty.com/admin/home/campaigns/smartPlan",
     submenu: [
-      { cardId: "automation", label: "Smart Plans", icon: "icon-smart_plan_01", subfeatureId: "smart-plans", href: "https://crm.lofty.com/admin/home/campaigns/smartPlan" },
+      { cardId: "automation", label: "Smart Plans", icon: "icon-smart_plan_01", subfeatureId: "smart-plans", view: "automation-smart-plans" },
       { cardId: "automation", label: "Auto Property Alert", icon: "icon-Vector", subfeatureId: "property-alerts", href: "https://crm.lofty.com/admin/home/campaigns/autoAlert" }
     ]
   },
@@ -317,7 +317,7 @@ function HeaderMenuCell({
   onNavigate: (view: LaunchedShellView) => void;
 }) {
   const isOpen = openMenu === item.label;
-  const isActive = activeView === "crm-people" && item.label === "CRM";
+  const isActive = item.submenu?.some((subitem) => subitem.view === activeView) ?? false;
 
   if (!item.submenu) {
     return (
@@ -403,7 +403,8 @@ export default function LoftyLaunchedShell({
   enabledCardIds,
   enabledSubfeatureIds,
   onNavigateHome,
-  onNavigatePeople
+  onNavigatePeople,
+  onNavigateSmartPlans
 }: {
   activeView: LaunchedShellView;
   children: ReactNode;
@@ -411,6 +412,7 @@ export default function LoftyLaunchedShell({
   enabledSubfeatureIds: string[];
   onNavigateHome: () => void;
   onNavigatePeople: () => void;
+  onNavigateSmartPlans: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -457,7 +459,12 @@ export default function LoftyLaunchedShell({
       return;
     }
 
-    onNavigatePeople();
+    if (view === "crm-people") {
+      onNavigatePeople();
+      return;
+    }
+
+    onNavigateSmartPlans();
   }
 
   useEffect(() => {

@@ -83,7 +83,7 @@ export interface PresetDefinition {
 export type PromptValues = Record<string, string | boolean>;
 export type PromptConfigStore = Record<string, PromptValues>;
 export type CardToggleStore = Record<string, boolean>;
-export type LaunchedShellView = "home" | "crm-people";
+export type LaunchedShellView = "home" | "crm-people" | "automation-smart-plans";
 export type LeadTaskType = "Call" | "Text" | "Email" | "Other";
 export type AppointmentType = "Appointment" | "Showing";
 export type OpportunityType = "High Interest" | "Likely Seller" | "Back to Site";

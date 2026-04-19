@@ -73,6 +73,7 @@ import type {
   SubfeatureDefinition
 } from "./types";
 import LoftyLaunchedShell from "./components/LoftyLaunchedShell";
+import SmartPlansWorkspace from "./components/SmartPlansWorkspace";
 
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
 
@@ -1266,6 +1267,9 @@ function LaunchSuccessScreen({
     if (activeView === "crm-people" && !launchedSubfeatureIds.has("people")) {
       setActiveView("home");
     }
+    if (activeView === "automation-smart-plans" && !launchedSubfeatureIds.has("smart-plans")) {
+      setActiveView("home");
+    }
   }, [activeView, launchedSubfeatureIds]);
 
   return (
@@ -1275,6 +1279,7 @@ function LaunchSuccessScreen({
       enabledSubfeatureIds={[...launchedSubfeatureIds]}
       onNavigateHome={() => setActiveView("home")}
       onNavigatePeople={() => setActiveView("crm-people")}
+      onNavigateSmartPlans={() => setActiveView("automation-smart-plans")}
     >
       {activeView === "home" ? (
         <div className="lofty-shell-section">
@@ -1320,7 +1325,7 @@ function LaunchSuccessScreen({
             />
           </div>
         </div>
-      ) : (
+      ) : activeView === "crm-people" ? (
         <div className="lofty-shell-section">
           <div className="lofty-shell-toolbar">
             <button className="secondary-button" onClick={onReset}>
@@ -1335,6 +1340,10 @@ function LaunchSuccessScreen({
               people={peopleViewItems}
             />
           </div>
+        </div>
+      ) : (
+        <div className="lofty-shell-section">
+          <SmartPlansWorkspace role={role} />
         </div>
       )}
     </LoftyLaunchedShell>
