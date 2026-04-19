@@ -187,6 +187,8 @@ const userMenuItems = [
   { label: "Earn Rewards", icon: "icon-earn_reword", href: "https://crm.lofty.com/admin/home/referral" }
 ];
 
+const MENU_CLOSE_DELAY_MS = 120;
+
 function dropdownMaskStyle(isOpen: boolean) {
   return {
     display: isOpen ? "block" : "none",
@@ -240,7 +242,36 @@ function MenuSubitem({
   onNavigate: (view: LaunchedShellView) => void;
 }) {
   const [isNestedOpen, setIsNestedOpen] = useState(false);
+  const closeTimeoutRef = useRef<number | null>(null);
   const isActive = item.view ? activeView === item.view : false;
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function openNestedMenu() {
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+
+    setIsNestedOpen(true);
+  }
+
+  function closeNestedMenu() {
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+    }
+
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setIsNestedOpen(false);
+      closeTimeoutRef.current = null;
+    }, MENU_CLOSE_DELAY_MS);
+  }
 
   if (!item.submenu) {
     return (
@@ -263,8 +294,8 @@ function MenuSubitem({
     <div
       {...attrs.dropdown}
       className="com-dropdownbox menu-dropdown-header crm-only-header-menu__subitem lofty-nav-submenu"
-      onMouseEnter={() => setIsNestedOpen(true)}
-      onMouseLeave={() => setIsNestedOpen(false)}
+      onMouseEnter={openNestedMenu}
+      onMouseLeave={closeNestedMenu}
     >
       <div className="com-dropdown-mask" style={dropdownMaskStyle(isNestedOpen)}></div>
       <div className="com-dropdown-body">
@@ -318,6 +349,35 @@ function HeaderMenuCell({
 }) {
   const isOpen = openMenu === item.label;
   const isActive = activeView === "crm-people" && item.label === "CRM";
+  const closeTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function openHeaderMenu() {
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+
+    setOpenMenu(item.label);
+  }
+
+  function closeHeaderMenu() {
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+    }
+
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setOpenMenu((current) => (current === item.label ? null : current));
+      closeTimeoutRef.current = null;
+    }, MENU_CLOSE_DELAY_MS);
+  }
 
   if (!item.submenu) {
     return (
@@ -344,8 +404,8 @@ function HeaderMenuCell({
       id={`com-overflow-display-cell-${index}`}
       data-index={index}
       className="display-cell"
-      onMouseEnter={() => setOpenMenu(item.label)}
-      onMouseLeave={() => setOpenMenu((current) => (current === item.label ? null : current))}
+      onMouseEnter={openHeaderMenu}
+      onMouseLeave={closeHeaderMenu}
     >
       <div {...attrs.dropdown} {...attrs.menu} data-v-f4100c9e="" className="com-dropdownbox menu-dropdown-header">
         <div className="com-dropdown-mask" style={dropdownMaskStyle(isOpen)}></div>

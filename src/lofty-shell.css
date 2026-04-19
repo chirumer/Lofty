@@ -68,9 +68,14 @@ img {
 
 .crm-only-menu .display-cell > .menu-dropdown-header > .com-dropdown {
   left: 0;
+  padding-top: 8px;
   position: absolute;
-  top: calc(100% + 4px);
+  top: 100%;
   z-index: 40;
+}
+
+.chime-website-container .com-dropdownbox > .com-dropdown-mask {
+  background: transparent !important;
 }
 
 .lofty-nav-submenu > .com-dropdown-body {
