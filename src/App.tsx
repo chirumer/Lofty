@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   closestCenter,
   DndContext,
@@ -7,120 +8,74 @@ import {
   DragStartEvent,
   MouseSensor,
   TouchSensor,
-  useDroppable,
   useDraggable,
+  useDroppable,
   useSensor,
   useSensors
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  useSortable
-} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
   AlertCircle,
   ArrowRight,
-  BadgeCheck,
-  Bot,
   Check,
-  ChevronDown,
-  ChevronRight,
-  CircleDashed,
-  CircleHelp,
-  ClipboardList,
   GripVertical,
+  Layers3,
   Lock,
-  MoveRight,
-  PanelsTopLeft,
-  Pin,
-  Plus,
+  Menu,
+  Rocket,
+  Search,
   Sparkles,
-  Trash2,
   WandSparkles,
   X
 } from "lucide-react";
 import {
-  getFeatureById,
-  getLayerById,
+  buildInitialCardStates,
+  buildInitialConfigStore,
+  buildInitialToggleStore,
+  buildPromptDefaults,
+  deriveLaunchReady,
+  getAccessibleCards,
+  getCardById,
+  getLockedCards,
+  getRecommendedCards,
   getRoleById,
-  isRoleAdmin,
-  layerDefinitions,
+  getSubfeature,
+  isCardRequiredForRole,
+  libraryCardDefinitions,
   roleDefinitions,
-  templateDefinitions
+  roleSelectionCopy,
+  topNavItems
 } from "./data";
 import type {
-  FeatureDefinition,
-  LayerConfigValues,
-  LayerDefinition,
-  LayerId,
+  CardState,
+  CardToggleStore,
+  LibraryCardDefinition,
+  LibraryCardId,
   OnboardingSnapshot,
+  PromptValues,
   RoleDefinition,
   RoleId,
-  SavedTemplate,
-  SetupPhase,
-  TemplateDefinition
+  SubfeatureDefinition
 } from "./types";
 
-const STORAGE_KEY = "lofty-onboarding-studio-v1";
-
-const topNavItems = ["CRM", "Sales", "Marketing", "Content", "Automation", "Reporting", "Marketplace", "AI Copilots"];
+const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
 
 const emptySnapshot: OnboardingSnapshot = {
   selectedRole: null,
-  activeLayers: [],
-  skippedLayers: [],
-  completedLayers: [],
-  pinnedLayers: [],
-  hiddenLayers: [],
-  featureOrder: {},
-  layerConfigs: {},
-  stepCompletion: {},
-  savedTemplates: [],
-  phase: "role-selection"
+  activeCardId: null,
+  cardStates: {},
+  subfeatureToggles: {},
+  subfeatureConfigs: {},
+  phase: "role-selection",
+  templatePreset: null,
+  pendingPrompt: null,
+  launchReady: false
 };
 
-function normalizeConfigDefaults(layer: LayerDefinition): LayerConfigValues {
-  return Object.fromEntries(
-    layer.configSchema.map((field) => [field.id, field.defaultValue ?? (field.type === "toggle" ? false : "")])
-  );
-}
-
-function isLayerAvailableForRole(layer: LayerDefinition, roleId: RoleId) {
-  return layer.roles.includes(roleId);
-}
-
-function isLayerRequiredForRole(layer: LayerDefinition, roleId: RoleId) {
-  return layer.requiredFor.includes(roleId);
-}
-
-function canSkipLayer(layer: LayerDefinition, roleId: RoleId) {
-  return layer.skippableFor.includes(roleId);
-}
-
-function computeRecommendedLayers(roleId: RoleId) {
-  return layerDefinitions
-    .filter((layer) => layer.roles.includes(roleId))
-    .sort((left, right) => {
-      const leftRequired = Number(isLayerRequiredForRole(left, roleId));
-      const rightRequired = Number(isLayerRequiredForRole(right, roleId));
-      if (leftRequired !== rightRequired) {
-        return rightRequired - leftRequired;
-      }
-      return left.dependencies.length - right.dependencies.length;
-    })
-    .map((layer) => layer.id);
-}
-
-function computePermissionSet(roleId: RoleId) {
-  const available = layerDefinitions.filter((layer) => layer.roles.includes(roleId));
-  const locked = layerDefinitions.filter((layer) => !layer.roles.includes(roleId));
+function normalizeSnapshot(snapshot: OnboardingSnapshot): OnboardingSnapshot {
   return {
-    availableLayers: available,
-    lockedLayers: locked,
-    requiredLayers: available.filter((layer) => isLayerRequiredForRole(layer, roleId)),
-    optionalLayers: available.filter((layer) => !isLayerRequiredForRole(layer, roleId))
+    ...snapshot,
+    launchReady: deriveLaunchReady(snapshot)
   };
 }
 
@@ -130,25 +85,59 @@ function loadSnapshot(): OnboardingSnapshot {
     if (!raw) {
       return emptySnapshot;
     }
-    const parsed = JSON.parse(raw) as OnboardingSnapshot;
-    return { ...emptySnapshot, ...parsed };
+    return normalizeSnapshot({ ...emptySnapshot, ...JSON.parse(raw) });
   } catch {
     return emptySnapshot;
   }
 }
 
+function getCardReadiness(snapshot: OnboardingSnapshot, card: LibraryCardDefinition, roleId: RoleId) {
+  const toggles = snapshot.subfeatureToggles[card.id] ?? {};
+  const configs = snapshot.subfeatureConfigs[card.id] ?? {};
+
+  const enabledAllowedSubfeatures = card.subfeatures.filter(
+    (item) => item.allowedRoles.includes(roleId) && toggles[item.id]
+  );
+
+  const missingRequiredSubfeatures = card.subfeatures.filter(
+    (item) => item.allowedRoles.includes(roleId) && item.requiredFor.includes(roleId) && !toggles[item.id]
+  );
+
+  const incompleteEnabledSubfeatures = enabledAllowedSubfeatures.filter((item) =>
+    item.promptFields.some((field) => {
+      if (!field.required) {
+        return false;
+      }
+      const value = configs[item.id]?.[field.id];
+      if (typeof value === "boolean") {
+        return value !== true;
+      }
+      return String(value ?? "").trim() === "";
+    })
+  );
+
+  const hasAnyEnabled = enabledAllowedSubfeatures.length > 0;
+  const ready =
+    hasAnyEnabled && missingRequiredSubfeatures.length === 0 && incompleteEnabledSubfeatures.length === 0;
+
+  return {
+    ready,
+    hasAnyEnabled,
+    enabledAllowedSubfeatures,
+    missingRequiredSubfeatures,
+    incompleteEnabledSubfeatures
+  };
+}
+
 function App() {
   const [snapshot, setSnapshot] = useState<OnboardingSnapshot>(() => loadSnapshot());
-  const [selectedLayerId, setSelectedLayerId] = useState<LayerId | null>(snapshot.activeLayers[0] ?? null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("minimal-launch-setup");
-  const [draggingLayerId, setDraggingLayerId] = useState<LayerId | null>(null);
-  const [drawerLayerId, setDrawerLayerId] = useState<LayerId | null>(null);
-  const [configLayerId, setConfigLayerId] = useState<LayerId | null>(null);
-  const [showAccessPreview, setShowAccessPreview] = useState(false);
-  const [showTemplateBuilder, setShowTemplateBuilder] = useState(false);
-  const [websiteBuildState, setWebsiteBuildState] = useState<"idle" | "building" | "ready">("idle");
-  const [templateDraft, setTemplateDraft] = useState({ name: "", description: "" });
-  const [expandedLeftLayers, setExpandedLeftLayers] = useState<Record<string, boolean>>({});
+  const [selectedCardId, setSelectedCardId] = useState<LibraryCardId | null>(null);
+  const [selectedSubfeatureId, setSelectedSubfeatureId] = useState<string | null>(null);
+  const [draggingCardId, setDraggingCardId] = useState<LibraryCardId | null>(null);
+  const [cardQuery, setCardQuery] = useState("");
+  const [mobileLibraryOpen, setMobileLibraryOpen] = useState(false);
+  const [showLaunchConfirm, setShowLaunchConfirm] = useState(false);
+  const [promptValues, setPromptValues] = useState<PromptValues>({});
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
@@ -159,637 +148,475 @@ function App() {
     [snapshot.selectedRole]
   );
 
-  const permissionSet = useMemo(
-    () => (snapshot.selectedRole ? computePermissionSet(snapshot.selectedRole) : null),
+  const accessibleCards = useMemo(
+    () => (snapshot.selectedRole ? getAccessibleCards(snapshot.selectedRole) : []),
     [snapshot.selectedRole]
   );
 
-  const recommendedOrder = useMemo(
-    () => (snapshot.selectedRole ? computeRecommendedLayers(snapshot.selectedRole) : []),
+  const lockedCards = useMemo(
+    () => (snapshot.selectedRole ? getLockedCards(snapshot.selectedRole) : []),
     [snapshot.selectedRole]
   );
 
-  const activeLayerDefinitions = snapshot.activeLayers.map(getLayerById);
-  const selectedLayer = selectedLayerId ? getLayerById(selectedLayerId) : activeLayerDefinitions[0] ?? null;
-  const drawerLayer = drawerLayerId ? getLayerById(drawerLayerId) : null;
-  const configLayer = configLayerId ? getLayerById(configLayerId) : null;
+  const filteredCards = useMemo(() => {
+    const query = cardQuery.trim().toLowerCase();
+    if (!query) {
+      return libraryCardDefinitions;
+    }
+    return libraryCardDefinitions.filter((card) => {
+      const haystack = `${card.label} ${card.description} ${card.subfeatures.map((item) => item.name).join(" ")}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [cardQuery]);
 
-  const templatesForRole = useMemo(() => {
+  const selectedCard = useMemo(() => {
+    const preferredId = selectedCardId ?? snapshot.activeCardId;
+    return preferredId ? getCardById(preferredId) : null;
+  }, [selectedCardId, snapshot.activeCardId]);
+
+  const selectedSubfeature =
+    selectedCard && selectedSubfeatureId
+      ? selectedCard.subfeatures.find((item) => item.id === selectedSubfeatureId) ?? null
+      : null;
+
+  const activeCard = snapshot.activeCardId ? getCardById(snapshot.activeCardId) : null;
+
+  const requiredCardsRemaining = useMemo(() => {
     if (!snapshot.selectedRole) {
       return [];
     }
-    const systemTemplates = templateDefinitions.filter((template) => template.roleIds.includes(snapshot.selectedRole!));
-    const userTemplates = snapshot.savedTemplates.filter((template) => template.roleIds.includes(snapshot.selectedRole!));
-    return [...systemTemplates, ...userTemplates];
-  }, [snapshot.savedTemplates, snapshot.selectedRole]);
+    return accessibleCards.filter(
+      (card) => card.requiredFor.includes(snapshot.selectedRole!) && snapshot.cardStates[card.id] !== "built"
+    );
+  }, [accessibleCards, snapshot.cardStates, snapshot.selectedRole]);
 
-  const stepCompletionForRole = snapshot.stepCompletion;
-  const completedRequiredLayersCount =
-    permissionSet?.requiredLayers.filter((layer) => snapshot.completedLayers.includes(layer.id)).length ?? 0;
-  const totalRequiredLayers = permissionSet?.requiredLayers.length ?? 0;
-  const readinessRatio =
-    totalRequiredLayers === 0 ? 0 : completedRequiredLayersCount / Math.max(totalRequiredLayers, 1);
-  const optionalBoost =
-    permissionSet?.optionalLayers.length
-      ? snapshot.completedLayers.filter((layerId) =>
-          permissionSet.optionalLayers.some((layer) => layer.id === layerId)
-        ).length /
-        Math.max(permissionSet.optionalLayers.length, 1)
-      : 0;
-  const launchReadinessScore = Math.min(100, Math.round(readinessRatio * 82 + optionalBoost * 18));
+  const optionalCardsRemaining = useMemo(() => {
+    if (!snapshot.selectedRole) {
+      return [];
+    }
+    return accessibleCards.filter(
+      (card) => !card.requiredFor.includes(snapshot.selectedRole!) && snapshot.cardStates[card.id] !== "built"
+    );
+  }, [accessibleCards, snapshot.cardStates, snapshot.selectedRole]);
 
-  const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor));
+  const recommendedCards = useMemo(
+    () => (snapshot.selectedRole ? getRecommendedCards(snapshot.selectedRole).map(getCardById) : []),
+    [snapshot.selectedRole]
+  );
+
+  const launchProgress = selectedRole
+    ? Math.round(
+        (accessibleCards.filter((card) => snapshot.cardStates[card.id] === "built").length /
+          Math.max(accessibleCards.length, 1)) *
+          100
+      )
+    : 0;
+
+  const pendingSubfeature =
+    snapshot.pendingPrompt ? getSubfeature(snapshot.pendingPrompt.cardId, snapshot.pendingPrompt.subfeatureId) : null;
+
+  useEffect(() => {
+    if (!snapshot.pendingPrompt) {
+      setPromptValues({});
+      return;
+    }
+    const existingValues =
+      snapshot.subfeatureConfigs[snapshot.pendingPrompt.cardId]?.[snapshot.pendingPrompt.subfeatureId] ?? {};
+    setPromptValues({
+      ...buildPromptDefaults(snapshot.pendingPrompt),
+      ...existingValues
+    });
+  }, [snapshot.pendingPrompt, snapshot.subfeatureConfigs]);
+
+  const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 8 } }), useSensor(TouchSensor));
 
   function updateSnapshot(updater: (current: OnboardingSnapshot) => OnboardingSnapshot) {
-    setSnapshot((current) => updater(current));
+    setSnapshot((current) => normalizeSnapshot(updater(current)));
   }
 
   function handleRoleSelect(role: RoleDefinition) {
-    const template = templateDefinitions.find((item) => item.roleIds.includes(role.id) && item.id === "minimal-launch-setup")
-      ?? templateDefinitions.find((item) => item.roleIds.includes(role.id));
-    const availableLayers = computePermissionSet(role.id).availableLayers.map((layer) => layer.id);
-    const nextActiveLayers = template
-      ? template.activeLayers.filter((layerId) => availableLayers.includes(layerId))
-      : computeRecommendedLayers(role.id).slice(0, 4);
-
-    const nextConfigs = Object.fromEntries(
-      availableLayers.map((layerId) => {
-        const layer = getLayerById(layerId);
-        return [layerId, normalizeConfigDefaults(layer)];
-      })
-    );
-
     updateSnapshot(() => ({
       ...emptySnapshot,
       selectedRole: role.id,
-      phase: "overview",
-      activeLayers: nextActiveLayers,
-      pinnedLayers: template?.pinnedLayers?.filter((layerId) => availableLayers.includes(layerId)) ?? [],
-      hiddenLayers: [],
-      layerConfigs: nextConfigs
+      cardStates: buildInitialCardStates(),
+      subfeatureToggles: buildInitialToggleStore(role.id),
+      subfeatureConfigs: buildInitialConfigStore(role.id),
+      phase: "builder"
     }));
-
-    setSelectedLayerId(nextActiveLayers[0] ?? availableLayers[0] ?? null);
-    setSelectedTemplateId(template?.id ?? "");
-    setShowAccessPreview(true);
-    setWebsiteBuildState("idle");
+    setSelectedCardId(null);
+    setSelectedSubfeatureId(null);
+    setCardQuery("");
+    setMobileLibraryOpen(false);
   }
 
-  function applyTemplate(template: TemplateDefinition | SavedTemplate) {
-    if (!snapshot.selectedRole) {
+  function activateCard(cardId: LibraryCardId) {
+    if (!snapshot.selectedRole || !getCardById(cardId).allowedRoles.includes(snapshot.selectedRole)) {
       return;
     }
-    const availableLayerIds = computePermissionSet(snapshot.selectedRole).availableLayers.map((layer) => layer.id);
-    const filteredActive = template.activeLayers.filter((layerId) => availableLayerIds.includes(layerId));
-    const filteredPinned = (template.pinnedLayers ?? []).filter((layerId) => availableLayerIds.includes(layerId));
-    const filteredSkipped = (template.skippedLayers ?? []).filter((layerId) => availableLayerIds.includes(layerId));
+    updateSnapshot((current) => ({ ...current, activeCardId: cardId }));
+    setSelectedCardId(cardId);
+    setSelectedSubfeatureId(null);
+    setMobileLibraryOpen(false);
+  }
+
+  function updateCardState(cardId: LibraryCardId, state: CardState) {
     updateSnapshot((current) => ({
       ...current,
-      activeLayers: filteredActive,
-      pinnedLayers: filteredPinned,
-      skippedLayers: filteredSkipped,
-      hiddenLayers: current.hiddenLayers.filter((layerId) => !filteredActive.includes(layerId))
+      cardStates: {
+        ...current.cardStates,
+        [cardId]: state
+      }
     }));
-    setSelectedLayerId(filteredActive[0] ?? null);
-    setSelectedTemplateId(template.id);
   }
 
-  function toggleLayerHidden(layerId: LayerId) {
-    updateSnapshot((current) => {
-      const hidden = new Set(current.hiddenLayers);
-      if (hidden.has(layerId)) {
-        hidden.delete(layerId);
-      } else {
-        hidden.add(layerId);
-      }
-      return { ...current, hiddenLayers: [...hidden] };
-    });
-  }
-
-  function toggleLayerPinned(layerId: LayerId) {
-    updateSnapshot((current) => {
-      const pinned = new Set(current.pinnedLayers);
-      if (pinned.has(layerId)) {
-        pinned.delete(layerId);
-      } else {
-        pinned.add(layerId);
-      }
-      return { ...current, pinnedLayers: [...pinned] };
-    });
-  }
-
-  function addLayerToWorkspace(layerId: LayerId) {
-    updateSnapshot((current) => {
-      if (current.activeLayers.includes(layerId)) {
-        return current;
-      }
-      return {
-        ...current,
-        activeLayers: [...current.activeLayers, layerId],
-        hiddenLayers: current.hiddenLayers.filter((item) => item !== layerId),
-        skippedLayers: current.skippedLayers.filter((item) => item !== layerId)
-      };
-    });
-    setSelectedLayerId(layerId);
-    setDrawerLayerId(null);
-  }
-
-  function removeLayerFromWorkspace(layerId: LayerId) {
-    updateSnapshot((current) => ({
-      ...current,
-      activeLayers: current.activeLayers.filter((item) => item !== layerId),
-      pinnedLayers: current.pinnedLayers.filter((item) => item !== layerId)
-    }));
-    if (selectedLayerId === layerId) {
-      const nextLayer = snapshot.activeLayers.find((item) => item !== layerId) ?? null;
-      setSelectedLayerId(nextLayer);
+  function handleToggleSubfeature(cardId: LibraryCardId, subfeature: SubfeatureDefinition, nextValue: boolean) {
+    if (!snapshot.selectedRole || !subfeature.allowedRoles.includes(snapshot.selectedRole)) {
+      return;
     }
-  }
 
-  function skipLayer(layerId: LayerId) {
-    updateSnapshot((current) => {
-      const skipped = new Set(current.skippedLayers);
-      skipped.add(layerId);
-      return {
+    if (nextValue) {
+      updateSnapshot((current) => ({
         ...current,
-        skippedLayers: [...skipped],
-        activeLayers: current.activeLayers.filter((item) => item !== layerId),
-        pinnedLayers: current.pinnedLayers.filter((item) => item !== layerId)
-      };
-    });
-  }
+        pendingPrompt: { cardId, subfeatureId: subfeature.id }
+      }));
+      setSelectedCardId(cardId);
+      setSelectedSubfeatureId(subfeature.id);
+      return;
+    }
 
-  function unskipLayer(layerId: LayerId) {
     updateSnapshot((current) => ({
       ...current,
-      skippedLayers: current.skippedLayers.filter((item) => item !== layerId)
-    }));
-  }
-
-  function markStep(layerId: LayerId, stepId: string, checked: boolean) {
-    updateSnapshot((current) => {
-      const stepKey = `${layerId}:${stepId}`;
-      const nextStepCompletion = { ...current.stepCompletion, [stepKey]: checked };
-      const layer = getLayerById(layerId);
-      const allRequiredDone = layer.steps
-        .filter((step) => step.required)
-        .every((step) => nextStepCompletion[`${layerId}:${step.id}`]);
-      const completedSet = new Set(current.completedLayers);
-      if (allRequiredDone) {
-        completedSet.add(layerId);
-      } else {
-        completedSet.delete(layerId);
-      }
-      return {
-        ...current,
-        stepCompletion: nextStepCompletion,
-        completedLayers: [...completedSet]
-      };
-    });
-  }
-
-  function updateLayerConfig(layerId: LayerId, key: string, value: string | boolean) {
-    updateSnapshot((current) => ({
-      ...current,
-      layerConfigs: {
-        ...current.layerConfigs,
-        [layerId]: {
-          ...normalizeConfigDefaults(getLayerById(layerId)),
-          ...current.layerConfigs[layerId],
-          [key]: value
+      subfeatureToggles: {
+        ...current.subfeatureToggles,
+        [cardId]: {
+          ...(current.subfeatureToggles[cardId] ?? {}),
+          [subfeature.id]: false
         }
+      },
+      cardStates: {
+        ...current.cardStates,
+        [cardId]: current.cardStates[cardId] === "built" ? "draft" : current.cardStates[cardId] ?? "draft"
       }
     }));
   }
 
-  function resetToRoleSelection() {
+  function savePrompt() {
+    if (!snapshot.pendingPrompt || !pendingSubfeature) {
+      return;
+    }
+
+    const missingRequiredFields = pendingSubfeature.promptFields.filter((field) => {
+      if (!field.required) {
+        return false;
+      }
+      const value = promptValues[field.id];
+      if (typeof value === "boolean") {
+        return value !== true;
+      }
+      return String(value ?? "").trim() === "";
+    });
+
+    if (missingRequiredFields.length > 0) {
+      return;
+    }
+
+    const { cardId, subfeatureId } = snapshot.pendingPrompt;
+    updateSnapshot((current) => ({
+      ...current,
+      subfeatureToggles: {
+        ...current.subfeatureToggles,
+        [cardId]: {
+          ...(current.subfeatureToggles[cardId] ?? {}),
+          [subfeatureId]: true
+        }
+      },
+      subfeatureConfigs: {
+        ...current.subfeatureConfigs,
+        [cardId]: {
+          ...(current.subfeatureConfigs[cardId] ?? {}),
+          [subfeatureId]: promptValues
+        }
+      },
+      cardStates: {
+        ...current.cardStates,
+        [cardId]: current.cardStates[cardId] === "built" ? "draft" : "draft"
+      },
+      pendingPrompt: null
+    }));
+  }
+
+  function closePrompt() {
+    updateSnapshot((current) => ({
+      ...current,
+      pendingPrompt: null
+    }));
+  }
+
+  function buildActiveCard() {
+    if (!snapshot.selectedRole || !activeCard) {
+      return;
+    }
+    const readiness = getCardReadiness(snapshot, activeCard, snapshot.selectedRole);
+    if (!readiness.ready) {
+      return;
+    }
+    updateCardState(activeCard.id, "built");
+  }
+
+  function triggerLaunch() {
+    if (!snapshot.launchReady) {
+      return;
+    }
+    if (optionalCardsRemaining.length > 0) {
+      setShowLaunchConfirm(true);
+      return;
+    }
+    updateSnapshot((current) => ({ ...current, phase: "launch-success" }));
+  }
+
+  function confirmLaunch() {
+    updateSnapshot((current) => ({ ...current, phase: "launch-success" }));
+    setShowLaunchConfirm(false);
+  }
+
+  function resetBuilder() {
     setSnapshot(emptySnapshot);
-    setSelectedLayerId(null);
-    setDrawerLayerId(null);
-    setConfigLayerId(null);
-    setShowAccessPreview(false);
-    setShowTemplateBuilder(false);
-    setWebsiteBuildState("idle");
+    setSelectedCardId(null);
+    setSelectedSubfeatureId(null);
+    setCardQuery("");
+    setMobileLibraryOpen(false);
+    setShowLaunchConfirm(false);
+    setPromptValues({});
     window.localStorage.removeItem(STORAGE_KEY);
   }
 
   function handleDragStart(event: DragStartEvent) {
     const activeId = String(event.active.id);
-    if (activeId.startsWith("catalog:")) {
-      setDraggingLayerId(activeId.replace("catalog:", "") as LayerId);
-      return;
-    }
-    if (activeId.startsWith("active:")) {
-      setDraggingLayerId(activeId.replace("active:", "") as LayerId);
+    if (activeId.startsWith("library:")) {
+      setDraggingCardId(activeId.replace("library:", "") as LibraryCardId);
     }
   }
 
   function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    setDraggingLayerId(null);
-    if (!over) {
-      return;
-    }
-    const activeId = String(active.id);
-    const overId = String(over.id);
-    if (activeId.startsWith("catalog:")) {
-      const layerId = activeId.replace("catalog:", "") as LayerId;
-      if (overId === "workspace" || overId.startsWith("active:")) {
-        addLayerToWorkspace(layerId);
-      }
-      return;
-    }
-    if (activeId.startsWith("active:") && overId.startsWith("active:")) {
-      const dragged = activeId.replace("active:", "") as LayerId;
-      const overLayer = overId.replace("active:", "") as LayerId;
-      if (dragged === overLayer) {
-        return;
-      }
-      updateSnapshot((current) => {
-        const oldIndex = current.activeLayers.indexOf(dragged);
-        const newIndex = current.activeLayers.indexOf(overLayer);
-        if (oldIndex < 0 || newIndex < 0) {
-          return current;
-        }
-        return {
-          ...current,
-          activeLayers: arrayMove(current.activeLayers, oldIndex, newIndex)
-        };
-      });
-      return;
-    }
-    if (activeId.startsWith("active:") && overId === "workspace") {
-      return;
+    setDraggingCardId(null);
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : null;
+    if (activeId.startsWith("library:") && overId === "workspace") {
+      activateCard(activeId.replace("library:", "") as LibraryCardId);
     }
   }
 
-  function handleBuildWebsite() {
-    setWebsiteBuildState("building");
-    window.setTimeout(() => {
-      setWebsiteBuildState("ready");
-      updateSnapshot((current) => ({ ...current, phase: "website-live" }));
-    }, 1800);
+  if (!selectedRole || snapshot.phase === "role-selection") {
+    return (
+      <div className="app-shell app-shell--selection">
+        <main className="page-shell page-shell--selection">
+          <RoleSelectionScreen onContinue={handleRoleSelect} />
+        </main>
+      </div>
+    );
   }
 
-  function saveTemplate() {
-    if (!snapshot.selectedRole || !templateDraft.name.trim()) {
-      return;
-    }
-    const newTemplate: SavedTemplate = {
-      id: `saved-${Date.now()}`,
-      name: templateDraft.name.trim(),
-      description: templateDraft.description.trim() || "Custom role-aware setup template",
-      roleIds: [snapshot.selectedRole],
-      activeLayers: snapshot.activeLayers,
-      pinnedLayers: snapshot.pinnedLayers,
-      skippedLayers: snapshot.skippedLayers,
-      createdAt: Date.now()
-    };
-    updateSnapshot((current) => ({
-      ...current,
-      savedTemplates: [newTemplate, ...current.savedTemplates]
-    }));
-    setTemplateDraft({ name: "", description: "" });
-    setShowTemplateBuilder(false);
+  if (snapshot.phase === "launch-success") {
+    return (
+      <div className="app-shell">
+        <main className="page-shell">
+          <LaunchSuccessScreen
+            role={selectedRole}
+            builtCards={accessibleCards.filter((card) => snapshot.cardStates[card.id] === "built")}
+            optionalCardsRemaining={optionalCardsRemaining}
+            snapshot={snapshot}
+            onReset={resetBuilder}
+          />
+        </main>
+      </div>
+    );
   }
 
-  const availableLayers = permissionSet?.availableLayers ?? [];
-  const lockedLayers = permissionSet?.lockedLayers ?? [];
-  const visibleCatalogLayers = availableLayers.filter((layer) => !snapshot.hiddenLayers.includes(layer.id));
-  const canOpenReview = Boolean(snapshot.selectedRole) && (snapshot.activeLayers.length > 0 || snapshot.completedLayers.length > 0);
-  const canBuildWebsite =
-    snapshot.selectedRole !== null &&
-    snapshot.completedLayers.includes("profile-branding") &&
-    snapshot.completedLayers.includes("website") &&
-    websiteBuildState === "idle";
+  const activeReadiness =
+    selectedRole && activeCard ? getCardReadiness(snapshot, activeCard, selectedRole.id) : null;
+
+  const libraryPanel = (
+    <LibraryPanel
+      cards={filteredCards}
+      selectedRoleId={selectedRole.id}
+      snapshot={snapshot}
+      query={cardQuery}
+      onQueryChange={setCardQuery}
+      onSelectCard={(cardId) => {
+        setSelectedCardId(cardId);
+        setSelectedSubfeatureId(null);
+      }}
+      onOpenCard={activateCard}
+      selectedCardId={selectedCardId}
+    />
+  );
 
   return (
     <div className="app-shell">
       <TopNavigation />
       <main className="page-shell">
-        {snapshot.phase === "role-selection" || !selectedRole ? (
-          <RoleSelectionScreen onSelect={handleRoleSelect} />
-        ) : snapshot.phase === "website-live" && websiteBuildState === "ready" ? (
-          <WebsitePreview
-            role={selectedRole}
-            layerConfigs={snapshot.layerConfigs}
-            readiness={launchReadinessScore}
-            completedLayers={snapshot.completedLayers.map(getLayerById)}
-            onBack={() => updateSnapshot((current) => ({ ...current, phase: "review" }))}
-          />
-        ) : (
-          <div className="experience-shell">
-            <header className="experience-header">
-              <div>
-                <p className="section-kicker">Lofty guided setup</p>
-                <h1>Who are you setting this up for? <span>{selectedRole.title}</span></h1>
-                <p>
-                  This onboarding only shows the layers and features {selectedRole.title.toLowerCase()} users can actually
-                  access. It teaches the product while it configures the account.
-                </p>
+        <div className="builder-shell">
+          <header className="builder-header">
+            <div>
+              <p className="section-kicker">Lofty Setup Builder</p>
+              <h1>Build the platform card by card</h1>
+              <p>
+                Drag one library card into the workspace, turn on the subfeatures you want, add the required setup
+                details, then build the card before launching.
+              </p>
+            </div>
+            <div className="builder-header-actions">
+              <button className="secondary-button mobile-only" onClick={() => setMobileLibraryOpen(true)}>
+                <Menu size={16} />
+                Cards
+              </button>
+              <button className="secondary-button" onClick={resetBuilder}>
+                Change role
+              </button>
+            </div>
+          </header>
+
+          <section className="overview-strip">
+            <div className="overview-card overview-card--summary">
+              <span>{selectedRole.name}</span>
+              <strong>{launchProgress}% launch progress</strong>
+              <p>
+                {accessibleCards.filter((card) => snapshot.cardStates[card.id] === "built").length} built cards,{" "}
+                {requiredCardsRemaining.length} required cards still open.
+              </p>
+            </div>
+            <div className="overview-card">
+              <div className="overview-card-title">
+                <h2>Recommended path</h2>
+                <p>These cards are the best place to start for this role.</p>
               </div>
-              <div className="header-actions">
-                <button className="secondary-button" onClick={() => setShowAccessPreview(true)}>
-                  <CircleHelp size={16} />
-                  Access preview
-                </button>
-                {isRoleAdmin(selectedRole.id) ? (
-                  <button className="secondary-button" onClick={() => setShowTemplateBuilder(true)}>
-                    <ClipboardList size={16} />
-                    Save template
+              <div className="chip-wrap">
+                {recommendedCards.map((card) => (
+                  <button key={card.id} className="template-pill" onClick={() => activateCard(card.id)}>
+                    <Sparkles size={14} />
+                    {card.label}
                   </button>
-                ) : null}
-                <button className="ghost-button" onClick={resetToRoleSelection}>
-                  Change role
-                </button>
+                ))}
               </div>
-            </header>
+            </div>
+          </section>
 
-            <OverviewBar
-              role={selectedRole}
-              templates={templatesForRole}
-              selectedTemplateId={selectedTemplateId}
-              onTemplateSelect={(template) => applyTemplate(template)}
-              onPhaseChange={(phase) => updateSnapshot((current) => ({ ...current, phase }))}
-              currentPhase={snapshot.phase}
-              canOpenReview={canOpenReview}
-              readinessScore={launchReadinessScore}
-              completedCount={snapshot.completedLayers.length}
-              activeCount={snapshot.activeLayers.length}
-              skippedCount={snapshot.skippedLayers.length}
-            />
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <div className="builder-layout builder-layout--single">
+              <aside className="panel left-panel desktop-only">{libraryPanel}</aside>
 
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-              <div className="three-column-layout">
-                <aside className="panel left-panel">
-                  <div className="panel-header">
-                    <div>
-                      <h2>Available layers</h2>
-                      <p>Only layers available to {selectedRole.title.toLowerCase()} users appear here.</p>
-                    </div>
-                    <span className="count-badge">{visibleCatalogLayers.length}</span>
+              <section className="panel center-panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>Active workspace</h2>
+                    <p>Only one card stays active here at a time. Dropping another card replaces it and keeps state saved.</p>
                   </div>
+                </div>
 
-                  <div className="catalog-section">
-                    {visibleCatalogLayers.map((layer) => (
-                      <CatalogLayerCard
-                        key={layer.id}
-                        layer={layer}
-                        roleId={selectedRole.id}
-                        active={snapshot.activeLayers.includes(layer.id)}
-                        hidden={snapshot.hiddenLayers.includes(layer.id)}
-                        pinned={snapshot.pinnedLayers.includes(layer.id)}
-                        expanded={Boolean(expandedLeftLayers[layer.id])}
-                        onToggleExpand={() =>
-                          setExpandedLeftLayers((current) => ({ ...current, [layer.id]: !current[layer.id] }))
-                        }
-                        onSelect={() => {
-                          setSelectedLayerId(layer.id);
-                          setDrawerLayerId(layer.id);
-                        }}
-                        onAdd={() => addLayerToWorkspace(layer.id)}
-                        onHide={() => toggleLayerHidden(layer.id)}
-                        onPin={() => toggleLayerPinned(layer.id)}
-                      />
-                    ))}
-                  </div>
-
-                  {snapshot.hiddenLayers.length ? (
-                    <div className="mini-section">
-                      <h3>Hidden optional layers</h3>
-                      <div className="chip-wrap">
-                        {snapshot.hiddenLayers.map((layerId) => {
-                          const layer = getLayerById(layerId);
-                          return (
-                            <button key={layerId} className="mini-chip" onClick={() => toggleLayerHidden(layerId)}>
-                              <Plus size={12} />
-                              {layer.name}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {lockedLayers.length ? (
-                    <div className="mini-section">
-                      <h3>Locked for this role</h3>
-                      <div className="locked-stack">
-                        {lockedLayers.slice(0, 5).map((layer) => (
-                          <button
-                            key={layer.id}
-                            className="locked-layer-card"
-                            onClick={() => {
-                              setSelectedLayerId(layer.id);
-                              setDrawerLayerId(layer.id);
-                            }}
-                          >
-                            <div>
-                              <strong>{layer.name}</strong>
-                              <span>{layer.lockedExplanation ?? "This layer is managed by a higher-permission role."}</span>
-                            </div>
-                            <Lock size={14} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </aside>
-
-                <section className="panel center-panel">
-                  <div className="panel-header">
-                    <div>
-                      <h2>Active setup workspace</h2>
-                      <p>Drag layers here to build a personalized setup path, then reorder them as needed.</p>
-                    </div>
-                    <button
-                      className="secondary-button"
-                      onClick={() => updateSnapshot((current) => ({ ...current, phase: "configure" }))}
-                    >
-                      <PanelsTopLeft size={16} />
-                      Focus configure
-                    </button>
-                  </div>
-
-                  <WorkspaceDropZone isEmpty={snapshot.activeLayers.length === 0}>
-                    <SortableContext items={snapshot.activeLayers.map((layerId) => `active:${layerId}`)} strategy={rectSortingStrategy}>
-                      <div className="workspace-list">
-                        {snapshot.activeLayers.length === 0 ? (
-                          <EmptyWorkspace
-                            recommendedLayers={recommendedOrder.slice(0, 4).map(getLayerById)}
-                            onAdd={addLayerToWorkspace}
-                          />
-                        ) : (
-                          activeLayerDefinitions.map((layer) => (
-                            <ActiveLayerCard
-                              key={layer.id}
-                              layer={layer}
-                              roleId={selectedRole.id}
-                              completed={snapshot.completedLayers.includes(layer.id)}
-                              skipped={snapshot.skippedLayers.includes(layer.id)}
-                              pinned={snapshot.pinnedLayers.includes(layer.id)}
-                              selected={selectedLayerId === layer.id}
-                              configValues={{
-                                ...normalizeConfigDefaults(layer),
-                                ...snapshot.layerConfigs[layer.id]
-                              }}
-                              stepCompletion={stepCompletionForRole}
-                              onSelect={() => setSelectedLayerId(layer.id)}
-                              onRemove={() => removeLayerFromWorkspace(layer.id)}
-                              onOpenConfig={() => setConfigLayerId(layer.id)}
-                              onOpenGuide={() => setDrawerLayerId(layer.id)}
-                              onPin={() => toggleLayerPinned(layer.id)}
-                              onSkip={() => skipLayer(layer.id)}
-                              onStepToggle={(stepId, checked) => markStep(layer.id, stepId, checked)}
-                              canSkip={canSkipLayer(layer, selectedRole.id)}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </SortableContext>
-                  </WorkspaceDropZone>
-
-                  {snapshot.skippedLayers.length ? (
-                    <div className="skipped-panel">
-                      <div className="skipped-header">
-                        <h3>Skipped layers</h3>
-                        <p>These are optional for this role. You can bring them back any time.</p>
-                      </div>
-                      <div className="chip-wrap">
-                        {snapshot.skippedLayers.map((layerId) => {
-                          const layer = getLayerById(layerId);
-                          return (
-                            <button key={layerId} className="mini-chip" onClick={() => unskipLayer(layerId)}>
-                              <Plus size={12} />
-                              Restore {layer.name}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="review-strip">
-                    <div className="review-card">
-                      <span>Launch readiness</span>
-                      <strong>{launchReadinessScore}%</strong>
-                      <p>Required layers completed: {completedRequiredLayersCount} of {totalRequiredLayers}</p>
-                    </div>
-                    <div className="review-card">
-                      <span>What is live after launch</span>
-                      <p>Website, CRM access, communication, and only the features your role can use.</p>
-                    </div>
-                    <div className="review-actions">
-                      <button
-                        className="secondary-button"
-                        onClick={() => updateSnapshot((current) => ({ ...current, phase: "review" }))}
-                      >
-                        Review setup
-                      </button>
-                      <button className="primary-button" disabled={!canBuildWebsite} onClick={handleBuildWebsite}>
-                        {websiteBuildState === "building" ? (
-                          <>
-                            <CircleDashed className="spin" size={16} />
-                            Building website...
-                          </>
-                        ) : (
-                          <>
-                            <WandSparkles size={16} />
-                            Build website
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </section>
-
-                <aside className="panel right-panel">
-                  <div className="panel-header">
-                    <div>
-                      <h2>Explanation panel</h2>
-                      <p>Selected layer guidance in simple English.</p>
-                    </div>
-                  </div>
-
-                  {selectedLayer ? (
-                    <ExplanationPanel
-                      layer={selectedLayer}
+                <WorkspaceDropZone hasActiveCard={Boolean(activeCard)}>
+                  {activeCard && selectedRole && activeReadiness ? (
+                    <ActiveCard
+                      card={activeCard}
                       roleId={selectedRole.id}
-                      configValues={{
-                        ...normalizeConfigDefaults(selectedLayer),
-                        ...snapshot.layerConfigs[selectedLayer.id]
+                      status={snapshot.cardStates[activeCard.id] ?? "not-started"}
+                      toggles={snapshot.subfeatureToggles[activeCard.id] ?? {}}
+                      configs={snapshot.subfeatureConfigs[activeCard.id] ?? {}}
+                      readiness={activeReadiness}
+                      selectedSubfeatureId={selectedSubfeatureId}
+                      onSelectSubfeature={(subfeatureId) => {
+                        setSelectedCardId(activeCard.id);
+                        setSelectedSubfeatureId(subfeatureId);
                       }}
-                      completed={snapshot.completedLayers.includes(selectedLayer.id)}
-                      available={isLayerAvailableForRole(selectedLayer, selectedRole.id)}
-                      onOpenGuide={() => setDrawerLayerId(selectedLayer.id)}
-                      onConfigure={() => isLayerAvailableForRole(selectedLayer, selectedRole.id) && setConfigLayerId(selectedLayer.id)}
+                      onToggleSubfeature={(subfeature, nextValue) => handleToggleSubfeature(activeCard.id, subfeature, nextValue)}
+                      onBuild={buildActiveCard}
                     />
                   ) : (
-                    <div className="placeholder-panel">
-                      <CircleHelp size={22} />
-                      <p>Select a layer to see what it does, why it matters, and what it unlocks later in Lofty.</p>
-                    </div>
+                    <EmptyWorkspace />
                   )}
+                </WorkspaceDropZone>
+              </section>
 
-                  <ReadinessSummary
-                    role={selectedRole}
-                    readinessScore={launchReadinessScore}
-                    completedLayers={snapshot.completedLayers.map(getLayerById)}
-                    skippedLayers={snapshot.skippedLayers.map(getLayerById)}
-                    remainingLayers={permissionSet?.requiredLayers.filter((layer) => !snapshot.completedLayers.includes(layer.id)) ?? []}
-                    canBuildWebsite={canBuildWebsite}
-                    onBuildWebsite={handleBuildWebsite}
-                    buildState={websiteBuildState}
-                  />
-                </aside>
+            </div>
+
+            <DragOverlay>{draggingCardId ? <DragPreview card={getCardById(draggingCardId)} /> : null}</DragOverlay>
+          </DndContext>
+
+          <section className="panel launch-summary-panel">
+            <LaunchSummary
+              role={selectedRole}
+              selectedCard={selectedCard}
+              selectedSubfeature={selectedSubfeature}
+              snapshot={snapshot}
+              requiredCardsRemaining={requiredCardsRemaining}
+              optionalCardsRemaining={optionalCardsRemaining}
+              lockedCards={lockedCards}
+              onLaunch={triggerLaunch}
+            />
+          </section>
+
+          {mobileLibraryOpen ? (
+            <div className="mobile-drawer-backdrop" onClick={() => setMobileLibraryOpen(false)}>
+              <div className="mobile-drawer" onClick={(event) => event.stopPropagation()}>
+                <div className="mobile-drawer-header">
+                  <div>
+                    <h3>Library Cards</h3>
+                    <p>Tap a card to preview it or open it in the workspace.</p>
+                  </div>
+                  <button className="icon-button" onClick={() => setMobileLibraryOpen(false)}>
+                    <X size={16} />
+                  </button>
+                </div>
+                {libraryPanel}
               </div>
+            </div>
+          ) : null}
 
-              <DragOverlay>
-                {draggingLayerId ? <DragPreview layer={getLayerById(draggingLayerId)} /> : null}
-              </DragOverlay>
-            </DndContext>
+          {snapshot.pendingPrompt && pendingSubfeature ? (
+            <SubfeaturePromptModal
+              card={getCardById(snapshot.pendingPrompt.cardId)}
+              subfeature={pendingSubfeature}
+              values={promptValues}
+              onChange={(fieldId, value) =>
+                setPromptValues((current) => ({
+                  ...current,
+                  [fieldId]: value
+                }))
+              }
+              onCancel={closePrompt}
+              onSave={savePrompt}
+            />
+          ) : null}
 
-            {showAccessPreview && permissionSet ? (
-              <AccessPreviewModal
-                role={selectedRole}
-                permissionSet={permissionSet}
-                onClose={() => setShowAccessPreview(false)}
-              />
-            ) : null}
-
-            {drawerLayer ? (
-              <LayerDrawer
-                layer={drawerLayer}
-                roleId={selectedRole.id}
-                available={isLayerAvailableForRole(drawerLayer, selectedRole.id)}
-                onClose={() => setDrawerLayerId(null)}
-              />
-            ) : null}
-
-            {configLayer ? (
-              <ConfigModal
-                layer={configLayer}
-                values={{
-                  ...normalizeConfigDefaults(configLayer),
-                  ...snapshot.layerConfigs[configLayer.id]
-                }}
-                onChange={(key, value) => updateLayerConfig(configLayer.id, key, value)}
-                onClose={() => setConfigLayerId(null)}
-              />
-            ) : null}
-
-            {showTemplateBuilder && selectedRole ? (
-              <TemplateBuilderModal
-                role={selectedRole}
-                activeLayers={snapshot.activeLayers.map(getLayerById)}
-                draft={templateDraft}
-                onDraftChange={setTemplateDraft}
-                onClose={() => setShowTemplateBuilder(false)}
-                onSave={saveTemplate}
-              />
-            ) : null}
-          </div>
-        )}
+          {showLaunchConfirm ? (
+            <ModalFrame
+              title="Launch with optional cards still open?"
+              subtitle="You have built the required cards. Optional cards can still be added later."
+              onClose={() => setShowLaunchConfirm(false)}
+            >
+              <div className="confirm-stack">
+                <div className="confirm-card">
+                  <h4>Still optional</h4>
+                  <div className="chip-wrap">
+                    {optionalCardsRemaining.map((card) => (
+                      <span key={card.id} className="mini-chip">
+                        {card.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="panel-button-row">
+                  <button className="secondary-button" onClick={() => setShowLaunchConfirm(false)}>
+                    Keep building
+                  </button>
+                  <button className="primary-button" onClick={confirmLaunch}>
+                    <Rocket size={16} />
+                    Launch anyway
+                  </button>
+                </div>
+              </div>
+            </ModalFrame>
+          ) : null}
+        </div>
       </main>
     </div>
   );
@@ -804,864 +631,843 @@ function TopNavigation() {
         </div>
         <div className="brand-copy">
           <strong>Lofty</strong>
-          <span>Onboarding Studio</span>
+          <span>Setup Studio</span>
         </div>
       </div>
       <nav className="nav-links" aria-label="Primary">
         {topNavItems.map((item) => (
-          <a key={item} href="#" onClick={(event) => event.preventDefault()}>
-            {item}
+          <a key={item.id} href="#" onClick={(event) => event.preventDefault()}>
+            {item.label}
           </a>
         ))}
       </nav>
       <div className="nav-actions">
-        <button className="nav-chip">Setup tour</button>
+        <button className="nav-chip">Guided launch</button>
       </div>
     </header>
   );
 }
 
-function RoleSelectionScreen({ onSelect }: { onSelect: (role: RoleDefinition) => void }) {
+function RoleSelectionScreen({ onContinue }: { onContinue: (role: RoleDefinition) => void }) {
+  const [draftRoleId, setDraftRoleId] = useState<RoleId | null>(null);
+  const draftRole = draftRoleId ? getRoleById(draftRoleId) : null;
+
   return (
     <section className="role-selection-page">
-      <div className="hero-copy">
-        <p className="section-kicker">Role-aware setup</p>
-        <h1>Who are you setting this up for?</h1>
-        <p>
-          Choose one role first. The rest of the onboarding only shows the Lofty layers, features, and controls that role
-          can actually use.
-        </p>
-      </div>
-
-      <div className="role-grid">
-        {roleDefinitions.map((role) => {
-          const Icon = role.icon;
-          return (
-            <button key={role.id} className="role-card" onClick={() => onSelect(role)}>
-              <div className="role-icon">
-                <Icon size={22} />
-              </div>
-              <div className="role-card-copy">
-                <div className="role-title-row">
-                  <strong>{role.title}</strong>
-                  <span>{role.accessLabel}</span>
-                </div>
-                <p>{role.description}</p>
-                <div className="role-meta">
-                  <div>
-                    <small>What they do</small>
-                    <span>{role.subtitle}</span>
-                  </div>
-                  <div>
-                    <small>Setup focus</small>
-                    <span>{role.setupFocus}</span>
-                  </div>
-                </div>
-                <div className="role-card-footer">
-                  <span>See only the layers this role can access</span>
-                  <ArrowRight size={16} />
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function OverviewBar({
-  role,
-  templates,
-  selectedTemplateId,
-  onTemplateSelect,
-  onPhaseChange,
-  currentPhase,
-  canOpenReview,
-  readinessScore,
-  completedCount,
-  activeCount,
-  skippedCount
-}: {
-  role: RoleDefinition;
-  templates: (TemplateDefinition | SavedTemplate)[];
-  selectedTemplateId: string;
-  onTemplateSelect: (template: TemplateDefinition | SavedTemplate) => void;
-  onPhaseChange: (phase: SetupPhase) => void;
-  currentPhase: SetupPhase;
-  canOpenReview: boolean;
-  readinessScore: number;
-  completedCount: number;
-  activeCount: number;
-  skippedCount: number;
-}) {
-  return (
-    <section className="overview-bar">
-      <div className="overview-summary-card">
-        <span>{role.title}</span>
-        <strong>{readinessScore}% launch readiness</strong>
-        <p>Completed {completedCount} layers, active {activeCount}, skipped {skippedCount}.</p>
-      </div>
-      <div className="template-strip">
-        {templates.map((template) => (
-          <button
-            key={template.id}
-            className={`template-pill ${selectedTemplateId === template.id ? "template-pill--active" : ""}`}
-            onClick={() => onTemplateSelect(template)}
-          >
-            <Sparkles size={14} />
-            <span>{template.name}</span>
-          </button>
-        ))}
-      </div>
-      <div className="phase-tabs">
-        {(["overview", "configure", "review"] as SetupPhase[]).map((phase) => (
-          <button
-            key={phase}
-            className={`phase-tab ${currentPhase === phase ? "phase-tab--active" : ""}`}
-            onClick={() => {
-              if (phase === "review" && !canOpenReview) {
-                return;
-              }
-              onPhaseChange(phase);
-            }}
-            disabled={phase === "review" && !canOpenReview}
-          >
-            {phase}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function CatalogLayerCard({
-  layer,
-  roleId,
-  active,
-  hidden,
-  pinned,
-  expanded,
-  onToggleExpand,
-  onSelect,
-  onAdd,
-  onHide,
-  onPin
-}: {
-  layer: LayerDefinition;
-  roleId: RoleId;
-  active: boolean;
-  hidden: boolean;
-  pinned: boolean;
-  expanded: boolean;
-  onToggleExpand: () => void;
-  onSelect: () => void;
-  onAdd: () => void;
-  onHide: () => void;
-  onPin: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `catalog:${layer.id}`,
-    data: { layerId: layer.id }
-  });
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.5 : 1
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} className={`catalog-layer-card ${active ? "catalog-layer-card--active" : ""}`}>
-      <div className="catalog-layer-top">
-        <button className="icon-button drag-handle" aria-label={`Drag ${layer.name}`} {...listeners} {...attributes}>
-          <GripVertical size={16} />
-        </button>
-        <button className="catalog-layer-main" onClick={onSelect}>
-          <div className="catalog-layer-copy">
-            <div className="catalog-layer-title">
-              <strong>{layer.name}</strong>
-              <span>{isLayerRequiredForRole(layer, roleId) ? "Required" : "Optional"}</span>
-            </div>
-            <p>{layer.shortDescription}</p>
+      <div className="setup-window">
+        <div className="setup-window-bar">
+          <div className="window-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
           </div>
-        </button>
-      </div>
-      <div className="catalog-layer-actions">
-        <button className="mini-action" onClick={onToggleExpand}>
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          Details
-        </button>
-        <button className={`mini-action ${pinned ? "mini-action--active" : ""}`} onClick={onPin}>
-          <Pin size={14} />
-          Pin
-        </button>
-        <button className="mini-action" onClick={onHide}>
-          <X size={14} />
-          {hidden ? "Show" : "Hide"}
-        </button>
-        <button className="mini-action mini-action--primary" onClick={onAdd} disabled={active}>
-          <Plus size={14} />
-          {active ? "In workspace" : "Add"}
-        </button>
-      </div>
-      {expanded ? (
-        <div className="catalog-layer-details">
-          <p>{layer.description}</p>
-          <ul>
-            {layer.featureIds.map((featureId) => (
-              <li key={featureId}>{getFeatureById(featureId).name}</li>
-            ))}
-          </ul>
         </div>
-      ) : null}
+
+        <div className="setup-window-header">
+          <div className="brand-mark">
+            <div className="brand-logo">
+              <span className="brand-cut" />
+            </div>
+            <div className="brand-copy brand-copy--single">
+              <strong>Lofty</strong>
+            </div>
+          </div>
+
+          <nav className="window-nav" aria-label="Setup sections">
+            {topNavItems.map((item) => (
+              <a key={item.id} href="#" onClick={(event) => event.preventDefault()}>
+                {item.label}
+              </a>
+            ))}
+          </nav>
+
+          <div className="window-nav-accent">
+            <Sparkles size={14} />
+            <span>AI Copilots</span>
+          </div>
+        </div>
+
+        <div className="setup-window-body">
+          <div className="selection-heading">
+            <h1>Who are you setting this up for?</h1>
+          </div>
+
+          <div className="role-grid role-grid--selection">
+            {roleDefinitions.map((role) => {
+              const Icon = role.icon;
+              const selected = draftRoleId === role.id;
+              return (
+                <button
+                  key={role.id}
+                  className={`role-choice-card ${selected ? "role-choice-card--selected" : ""}`}
+                  onClick={() => setDraftRoleId(role.id)}
+                >
+                  <div className="role-icon role-icon--selection">
+                    <Icon size={28} strokeWidth={2.1} />
+                  </div>
+                  <div className="role-card-copy role-card-copy--selection">
+                    <div className="role-card-header">
+                      <strong>{role.name}</strong>
+                    </div>
+                    <p>{roleSelectionCopy[role.id]}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            className="selection-continue"
+            disabled={!draftRole}
+            onClick={() => {
+              if (draftRole) {
+                onContinue(draftRole);
+              }
+            }}
+          >
+            Continue
+            <ArrowRight size={16} />
+          </button>
+
+          <p className="selection-footnote">
+            Pick the role that best matches how you plan to use this account. The setup will be customized based on your
+            choice.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LibraryPanel({
+  cards,
+  selectedRoleId,
+  snapshot,
+  query,
+  onQueryChange,
+  onSelectCard,
+  onOpenCard,
+  selectedCardId
+}: {
+  cards: LibraryCardDefinition[];
+  selectedRoleId: RoleId;
+  snapshot: OnboardingSnapshot;
+  query: string;
+  onQueryChange: (value: string) => void;
+  onSelectCard: (cardId: LibraryCardId) => void;
+  onOpenCard: (cardId: LibraryCardId) => void;
+  selectedCardId: LibraryCardId | null;
+}) {
+  return (
+    <div className="layer-library">
+      <div className="panel-header">
+        <div>
+          <h2>Layer Library</h2>
+          <p>These are the only eight setup cards in the builder. Drag one into the workspace to configure it.</p>
+        </div>
+      </div>
+
+      <div className="library-controls">
+        <label className="search-field">
+          <Search size={15} />
+          <input
+            type="text"
+            value={query}
+            placeholder="Search cards or subfeatures"
+            onChange={(event) => onQueryChange(event.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className="library-stack">
+        {cards.map((card) => (
+          <LibraryCard
+            key={card.id}
+            card={card}
+            roleId={selectedRoleId}
+            status={snapshot.cardStates[card.id] ?? "not-started"}
+            selected={selectedCardId === card.id}
+            onSelect={() => onSelectCard(card.id)}
+            onOpen={() => onOpenCard(card.id)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
-function WorkspaceDropZone({ children, isEmpty }: { children: React.ReactNode; isEmpty: boolean }) {
+function LibraryCard({
+  card,
+  roleId,
+  status,
+  selected,
+  onSelect,
+  onOpen
+}: {
+  card: LibraryCardDefinition;
+  roleId: RoleId;
+  status: CardState;
+  selected: boolean;
+  onSelect: () => void;
+  onOpen: () => void;
+}) {
+  const available = card.allowedRoles.includes(roleId);
+  const Icon = card.icon;
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `library:${card.id}`,
+    disabled: !available
+  });
+
+  const statusLabel =
+    status === "built" ? "Built" : status === "draft" ? "Draft" : status === "not-started" ? "Not started" : status;
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`library-layer-card ${selected ? "library-layer-card--selected" : ""} ${!available ? "library-layer-card--locked" : ""}`}
+      style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.6 : 1 }}
+    >
+      <button className="library-layer-main" onClick={onSelect}>
+        <div className="library-layer-heading">
+          <div className="library-card-title">
+            <span className="library-card-icon">
+              <Icon size={16} />
+            </span>
+            <strong>{card.label}</strong>
+          </div>
+          <span className={`status-dot status-dot--${status === "draft" ? "in-progress" : status}`} />
+        </div>
+        <p>{card.description}</p>
+      </button>
+
+      <div className="library-layer-meta">
+        <span className={`mini-badge ${isCardRequiredForRole(card, roleId) ? "mini-badge--required" : ""}`}>
+          {isCardRequiredForRole(card, roleId) ? "Required" : "Optional"}
+        </span>
+        <span className={`mini-badge ${status === "built" ? "mini-badge--built" : ""}`}>{statusLabel}</span>
+        {!available ? <span className="mini-badge mini-badge--locked">Locked</span> : null}
+      </div>
+
+      <div className="library-layer-actions">
+        {available ? (
+          <button className="icon-button drag-handle" aria-label={`Drag ${card.label}`} {...listeners} {...attributes}>
+            <GripVertical size={16} />
+          </button>
+        ) : (
+          <button className="icon-button" onClick={onSelect}>
+            <Lock size={14} />
+          </button>
+        )}
+        <button className={`mini-action ${available ? "mini-action--primary" : ""}`} onClick={available ? onOpen : onSelect}>
+          {available ? "Open" : "Why locked"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceDropZone({ hasActiveCard, children }: { hasActiveCard: boolean; children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: "workspace" });
   return (
-    <div ref={setNodeRef} className={`workspace-dropzone ${isOver ? "workspace-dropzone--over" : ""} ${isEmpty ? "workspace-dropzone--empty" : ""}`}>
+    <div
+      ref={setNodeRef}
+      className={`workspace-dropzone workspace-dropzone--single ${isOver ? "workspace-dropzone--over" : ""} ${hasActiveCard ? "workspace-dropzone--filled" : "workspace-dropzone--empty"}`}
+    >
       {children}
     </div>
   );
 }
 
-function EmptyWorkspace({
-  recommendedLayers,
-  onAdd
-}: {
-  recommendedLayers: LayerDefinition[];
-  onAdd: (layerId: LayerId) => void;
-}) {
+function EmptyWorkspace() {
   return (
     <div className="empty-workspace">
-      <div className="empty-workspace-copy">
-        <Bot size={28} />
-        <h3>Drag a layer here to begin setup</h3>
-        <p>
-          Start with one of the recommended layers below, or drag from the left panel to build your own setup path.
-        </p>
-      </div>
-      <div className="chip-wrap">
-        {recommendedLayers.map((layer) => (
-          <button key={layer.id} className="mini-chip" onClick={() => onAdd(layer.id)}>
-            <Plus size={12} />
-            {layer.name}
-          </button>
-        ))}
-      </div>
+      <Layers3 size={28} />
+      <h3>Drag a card here to start</h3>
+      <p>Choose a card from the library. Your website will be built one card at a time.</p>
     </div>
   );
 }
 
-function ActiveLayerCard({
-  layer,
+function ActiveCard({
+  card,
   roleId,
-  completed,
-  skipped,
-  pinned,
-  selected,
-  configValues,
-  stepCompletion,
-  onSelect,
-  onRemove,
-  onOpenConfig,
-  onOpenGuide,
-  onPin,
-  onSkip,
-  onStepToggle,
-  canSkip
+  status,
+  toggles,
+  configs,
+  readiness,
+  selectedSubfeatureId,
+  onSelectSubfeature,
+  onToggleSubfeature,
+  onBuild
 }: {
-  layer: LayerDefinition;
+  card: LibraryCardDefinition;
   roleId: RoleId;
-  completed: boolean;
-  skipped: boolean;
-  pinned: boolean;
-  selected: boolean;
-  configValues: LayerConfigValues;
-  stepCompletion: Record<string, boolean>;
-  onSelect: () => void;
-  onRemove: () => void;
-  onOpenConfig: () => void;
-  onOpenGuide: () => void;
-  onPin: () => void;
-  onSkip: () => void;
-  onStepToggle: (stepId: string, checked: boolean) => void;
-  canSkip: boolean;
+  status: CardState;
+  toggles: CardToggleStore;
+  configs: Record<string, PromptValues>;
+  readiness: ReturnType<typeof getCardReadiness>;
+  selectedSubfeatureId: string | null;
+  onSelectSubfeature: (subfeatureId: string) => void;
+  onToggleSubfeature: (subfeature: SubfeatureDefinition, nextValue: boolean) => void;
+  onBuild: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `active:${layer.id}`
-  });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.55 : 1
-  };
-
-  const requiredDone = layer.steps.filter((step) => step.required).every((step) => stepCompletion[`${layer.id}:${step.id}`]);
+  const Icon = card.icon;
 
   return (
-    <article ref={setNodeRef} style={style} className={`active-layer-card ${selected ? "active-layer-card--selected" : ""}`}>
-      <div className="active-layer-header">
-        <div className="active-layer-header-left">
-          <button className="icon-button drag-handle" aria-label={`Reorder ${layer.name}`} {...listeners} {...attributes}>
-            <GripVertical size={16} />
-          </button>
-          <button className="active-layer-header-copy" onClick={onSelect}>
-            <div className="active-layer-title">
-              <strong>{layer.name}</strong>
-              <div className="status-row">
-                {completed ? <span className="status-pill status-pill--done">Complete</span> : null}
-                {pinned ? <span className="status-pill">Pinned</span> : null}
-                {!completed ? <span className="status-pill status-pill--pending">{isLayerRequiredForRole(layer, roleId) ? "Required" : "Optional"}</span> : null}
-              </div>
-            </div>
-            <p>{layer.shortDescription}</p>
-          </button>
+    <article className="active-card">
+      <div className="active-card-header">
+        <div>
+          <p className="section-kicker">Active card</p>
+          <div className="active-card-title-row">
+            <span className="active-card-icon">
+              <Icon size={18} />
+            </span>
+            <h2>{card.label}</h2>
+          </div>
+          <p>{card.description}</p>
         </div>
-        <div className="active-layer-actions">
-          <button className="mini-action" onClick={onOpenGuide}>
-            <CircleHelp size={14} />
-            Guide
-          </button>
-          <button className="mini-action" onClick={onOpenConfig}>
-            <Sparkles size={14} />
-            Configure
-          </button>
-          <button className={`mini-action ${pinned ? "mini-action--active" : ""}`} onClick={onPin}>
-            <Pin size={14} />
-            Pin
-          </button>
-          {canSkip ? (
-            <button className="mini-action" onClick={onSkip}>
-              <CircleDashed size={14} />
-              Skip
-            </button>
-          ) : null}
-          <button className="mini-action" onClick={onRemove}>
-            <Trash2 size={14} />
-            Remove
-          </button>
+        <div className="chip-wrap">
+          <span className={`mini-badge ${status === "built" ? "mini-badge--built" : ""}`}>
+            {status === "built" ? "Built" : status === "draft" ? "Draft" : "Not started"}
+          </span>
+          <span className={`mini-badge ${isCardRequiredForRole(card, roleId) ? "mini-badge--required" : ""}`}>
+            {isCardRequiredForRole(card, roleId) ? "Required" : "Optional"}
+          </span>
         </div>
       </div>
 
-      <div className="layer-card-body">
-        <div className="layer-card-column">
-          <h4>Setup steps</h4>
-          <div className="steps-list">
-            {layer.steps.map((step) => {
-              const checked = Boolean(stepCompletion[`${layer.id}:${step.id}`]);
-              const feature = step.featureId ? getFeatureById(step.featureId) : null;
+      <div className="active-card-layout">
+        <div className="active-card-subfeatures">
+          <div className="section-label-row">
+            <h3>Subfeatures</h3>
+            <span>{readiness.enabledAllowedSubfeatures.length} enabled</span>
+          </div>
+          <div className="feature-list">
+            {card.subfeatures.map((subfeature) => {
+              const allowed = subfeature.allowedRoles.includes(roleId);
+              const enabled = toggles[subfeature.id] ?? false;
               return (
-                <label key={step.id} className={`step-item ${checked ? "step-item--checked" : ""}`}>
-                  <input type="checkbox" checked={checked} onChange={(event) => onStepToggle(step.id, event.target.checked)} />
-                  <div>
-                    <div className="step-title-row">
-                      <strong>{step.title}</strong>
-                      {step.required ? <span>Required</span> : <span>Optional</span>}
+                <div
+                  key={subfeature.id}
+                  className={`subfeature-row ${selectedSubfeatureId === subfeature.id ? "subfeature-row--selected" : ""} ${!allowed ? "subfeature-row--locked" : ""}`}
+                  onClick={() => onSelectSubfeature(subfeature.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onSelectSubfeature(subfeature.id);
+                    }
+                  }}
+                >
+                  <div className="subfeature-row-copy">
+                    <div className="feature-title-row">
+                      <strong>{subfeature.name}</strong>
+                      <div className="chip-wrap">
+                        {subfeature.requiredFor.includes(roleId) ? (
+                          <span className="mini-badge mini-badge--required">Required</span>
+                        ) : null}
+                        {!allowed ? <span className="mini-badge mini-badge--locked">Locked</span> : null}
+                        {configs[subfeature.id] ? <span className="mini-badge">Configured</span> : null}
+                      </div>
                     </div>
-                    <p>{step.description}</p>
-                    {feature ? <small>{feature.description}</small> : null}
+                    <p>{subfeature.description}</p>
+                    <small>{allowed ? subfeature.setupSummary : subfeature.lockedReason}</small>
                   </div>
-                </label>
+                  <button
+                    type="button"
+                    className={`toggle-button ${enabled ? "toggle-button--on" : ""}`}
+                    disabled={!allowed}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleSubfeature(subfeature, !enabled);
+                    }}
+                  >
+                    <span />
+                    {allowed ? (enabled ? "On" : "Off") : "Locked"}
+                  </button>
+                </div>
               );
             })}
           </div>
         </div>
 
-        <div className="layer-card-column">
-          <h4>Configured right now</h4>
-          <div className="config-summary">
-            {layer.configSchema.map((field) => (
-              <div key={field.id} className="config-row">
-                <span>{field.label}</span>
-                <strong>
-                  {typeof configValues[field.id] === "boolean"
-                    ? configValues[field.id]
-                      ? "On"
-                      : "Off"
-                    : String(configValues[field.id] || "Not set")}
-                </strong>
-              </div>
-            ))}
+        <div className="active-card-readiness">
+          <div className="info-block">
+            <small>What this card does</small>
+            <strong>{card.whatItDoes}</strong>
+          </div>
+          <div className="info-block">
+            <small>Why it matters</small>
+            <strong>{card.whyItMatters}</strong>
           </div>
 
-          <div className="education-mini-card">
-            <p className="education-label">Why this matters</p>
-            <strong>{layer.whyItMatters}</strong>
-            <p>{layer.example}</p>
+          <div className="readiness-list">
+            <ReadinessRow label="Required subfeatures left" value={readiness.missingRequiredSubfeatures.length} />
+            <ReadinessRow label="Enabled but incomplete" value={readiness.incompleteEnabledSubfeatures.length} />
+            <ReadinessRow label="Enabled subfeatures" value={readiness.enabledAllowedSubfeatures.length} />
           </div>
+
+          <div className="readiness-note">
+            {readiness.ready ? (
+              <>
+                <Check size={14} />
+                This card is ready to build.
+              </>
+            ) : (
+              <>
+                <AlertCircle size={14} />
+                Enable the required subfeatures and complete their prompts before building this card.
+              </>
+            )}
+          </div>
+
+          <button className="primary-button build-button" disabled={!readiness.ready} onClick={onBuild}>
+            <WandSparkles size={16} />
+            Build this card
+          </button>
         </div>
       </div>
-
-      <div className="layer-card-footer">
-        <span>
-          {requiredDone ? (
-            <>
-              <Check size={14} />
-              This layer is ready for launch.
-            </>
-          ) : (
-            <>
-              <AlertCircle size={14} />
-              Finish the required steps to mark this layer complete.
-            </>
-          )}
-        </span>
-      </div>
-      {skipped ? <div className="screenreader-only">This layer is skipped.</div> : null}
     </article>
   );
 }
 
-function ExplanationPanel({
-  layer,
-  roleId,
-  configValues,
-  completed,
-  available,
-  onOpenGuide,
-  onConfigure
-}: {
-  layer: LayerDefinition;
-  roleId: RoleId;
-  configValues: LayerConfigValues;
-  completed: boolean;
-  available: boolean;
-  onOpenGuide: () => void;
-  onConfigure: () => void;
-}) {
-  const featureItems = layer.featureIds.map(getFeatureById);
+function ReadinessRow({ label, value }: { label: string; value: number }) {
   return (
-    <div className="explanation-panel">
-      <div className={`explanation-card ${available ? "" : "explanation-card--locked"}`}>
-        <div className="explanation-heading">
-          <div>
-            <p className="section-kicker">{available ? "Selected layer" : "Locked layer"}</p>
-            <h3>{layer.name}</h3>
-          </div>
-          {completed ? <BadgeCheck size={22} /> : available ? <Sparkles size={22} /> : <Lock size={20} />}
-        </div>
-        <p>{layer.description}</p>
-        {!available ? (
-          <div className="locked-inline-note">
-            <Lock size={14} />
-            <span>{layer.lockedExplanation ?? "This layer belongs to a different permission level."}</span>
-          </div>
-        ) : null}
+    <div className="config-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
 
-        <div className="explanation-grid">
-          <div>
-            <small>What it is</small>
-            <strong>{layer.whatItIs}</strong>
-          </div>
-          <div>
-            <small>Why it matters</small>
-            <strong>{layer.whyItMatters}</strong>
-          </div>
-          <div>
-            <small>When to use it</small>
-            <strong>{layer.whenToUse}</strong>
-          </div>
-          <div>
-            <small>Who can use it</small>
-            <strong>{layer.whoCanUseLabel}</strong>
-          </div>
-        </div>
-      </div>
-
-      <div className="explanation-card">
-        <h4>What this unlocks later</h4>
-        <ul className="plain-list">
-          {layer.unlocks.map((unlock) => (
-            <li key={unlock}>
-              <MoveRight size={14} />
-              {unlock}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="explanation-card">
-        <h4>Features inside this layer</h4>
-        <div className="feature-stack">
-          {featureItems.map((feature) => (
-            <FeatureTile key={feature.id} feature={feature} roleId={roleId} />
-          ))}
-        </div>
-      </div>
-
-      <div className="explanation-card">
-        <h4>Plain-English example</h4>
-        <p>{layer.example}</p>
-        <small>If you skip this: {layer.skipImpact}</small>
-      </div>
-
-      {available ? (
-        <div className="panel-button-row">
-          <button className="secondary-button" onClick={onOpenGuide}>
-            <CircleHelp size={16} />
-            Layer detail drawer
-          </button>
-          <button className="primary-button" onClick={onConfigure}>
-            <Sparkles size={16} />
-            Feature config modal
-          </button>
-        </div>
-      ) : null}
-
-      <div className="explanation-card">
-        <h4>Current config preview</h4>
-        <div className="config-summary">
-          {layer.configSchema.map((field) => (
-            <div key={field.id} className="config-row">
-              <span>{field.label}</span>
-              <strong>
-                {typeof configValues[field.id] === "boolean"
-                  ? configValues[field.id]
-                    ? "On"
-                    : "Off"
-                  : String(configValues[field.id] || "Not set")}
-              </strong>
+function LaunchSummary({
+  role,
+  selectedCard,
+  selectedSubfeature,
+  snapshot,
+  requiredCardsRemaining,
+  optionalCardsRemaining,
+  lockedCards,
+  onLaunch
+}: {
+  role: RoleDefinition;
+  selectedCard: LibraryCardDefinition | null;
+  selectedSubfeature: SubfeatureDefinition | null;
+  snapshot: OnboardingSnapshot;
+  requiredCardsRemaining: LibraryCardDefinition[];
+  optionalCardsRemaining: LibraryCardDefinition[];
+  lockedCards: LibraryCardDefinition[];
+  onLaunch: () => void;
+}) {
+  return (
+    <div className="launch-summary-stack">
+      {selectedCard ? (
+        <div className="info-card info-card--layer">
+          <div className="panel-header">
+            <div>
+              <h2>{selectedCard.label}</h2>
+              <p>{selectedCard.description}</p>
             </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FeatureTile({ feature, roleId }: { feature: FeatureDefinition; roleId: RoleId }) {
-  const available = feature.whoCanUse.includes(roleId);
-  return (
-    <div className={`feature-tile ${available ? "" : "feature-tile--locked"}`}>
-      <div className="feature-tile-header">
-        <strong>{feature.name}</strong>
-        {available ? <span>Available</span> : <span>Locked</span>}
-      </div>
-      <p>{feature.description}</p>
-      <small>{available ? feature.example : "Hidden because this role does not control this part of Lofty."}</small>
-    </div>
-  );
-}
-
-function ReadinessSummary({
-  role,
-  readinessScore,
-  completedLayers,
-  skippedLayers,
-  remainingLayers,
-  canBuildWebsite,
-  onBuildWebsite,
-  buildState
-}: {
-  role: RoleDefinition;
-  readinessScore: number;
-  completedLayers: LayerDefinition[];
-  skippedLayers: LayerDefinition[];
-  remainingLayers: LayerDefinition[];
-  canBuildWebsite: boolean;
-  onBuildWebsite: () => void;
-  buildState: "idle" | "building" | "ready";
-}) {
-  return (
-    <div className="readiness-summary">
-      <div className="readiness-score-ring">
-        <div className="score-ring-inner">
-          <span>{readinessScore}%</span>
-          <small>Launch readiness</small>
-        </div>
-      </div>
-
-      <div className="readiness-card">
-        <h4>What {role.title} now has access to</h4>
-        <ul className="plain-list">
-          {role.accessSummary.map((item) => (
-            <li key={item}>
-              <Check size={14} />
-              {item}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="readiness-card">
-        <h4>Completed layers</h4>
-        <div className="chip-wrap">
-          {completedLayers.length ? completedLayers.map((layer) => <span key={layer.id} className="mini-chip mini-chip--success">{layer.name}</span>) : <span className="muted-copy">Nothing marked complete yet.</span>}
-        </div>
-      </div>
-
-      <div className="readiness-card">
-        <h4>What remains</h4>
-        <div className="chip-wrap">
-          {remainingLayers.length ? remainingLayers.map((layer) => <span key={layer.id} className="mini-chip mini-chip--warning">{layer.name}</span>) : <span className="muted-copy">All required layers are finished.</span>}
-        </div>
-      </div>
-
-      {skippedLayers.length ? (
-        <div className="readiness-card">
-          <h4>Skipped layers</h4>
-          <div className="chip-wrap">
-            {skippedLayers.map((layer) => (
-              <span key={layer.id} className="mini-chip">{layer.name}</span>
-            ))}
+            <span className={`mini-badge ${(snapshot.cardStates[selectedCard.id] ?? "not-started") === "built" ? "mini-badge--built" : ""}`}>
+              {snapshot.cardStates[selectedCard.id] === "built"
+                ? "Built"
+                : snapshot.cardStates[selectedCard.id] === "draft"
+                  ? "Draft"
+                  : "Not started"}
+            </span>
           </div>
-        </div>
-      ) : null}
 
-      <div className="build-card">
-        <div>
-          <p className="section-kicker">Final step</p>
-          <h4>Build website</h4>
-          <p>
-            Once profile, website, and the core setup are ready, Lofty can build the first website experience from your
-            setup choices.
-          </p>
-        </div>
-        <button className="primary-button" disabled={!canBuildWebsite || buildState === "building"} onClick={onBuildWebsite}>
-          {buildState === "building" ? (
-            <>
-              <CircleDashed className="spin" size={16} />
-              Building...
-            </>
-          ) : (
-            <>
-              <WandSparkles size={16} />
-              Build website
-            </>
-          )}
-        </button>
-        {!canBuildWebsite ? (
-          <small>Complete Profile & Branding and Website first so Lofty has enough context to generate the site.</small>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function AccessPreviewModal({
-  role,
-  permissionSet,
-  onClose
-}: {
-  role: RoleDefinition;
-  permissionSet: ReturnType<typeof computePermissionSet>;
-  onClose: () => void;
-}) {
-  return (
-    <ModalFrame title={`${role.title} access preview`} subtitle="This role sees only the layers and controls it can actually use." onClose={onClose}>
-      <div className="modal-grid">
-        <div className="modal-card">
-          <h4>Accessible layers</h4>
-          <div className="chip-wrap">
-            {permissionSet.availableLayers.map((layer) => (
-              <span key={layer.id} className="mini-chip mini-chip--success">{layer.name}</span>
-            ))}
+          <div className="info-block">
+            <small>What this card does</small>
+            <strong>{selectedCard.whatItDoes}</strong>
           </div>
-        </div>
-        <div className="modal-card">
-          <h4>Locked layers</h4>
-          <div className="locked-stack">
-            {permissionSet.lockedLayers.map((layer) => (
-              <div key={layer.id} className="locked-layer-card locked-layer-card--static">
-                <div>
-                  <strong>{layer.name}</strong>
-                  <span>{layer.lockedExplanation ?? "Managed by another role."}</span>
-                </div>
-                <Lock size={14} />
+          <div className="info-block">
+            <small>Why it matters</small>
+            <strong>{selectedCard.whyItMatters}</strong>
+          </div>
+          <div className="info-grid">
+            <div>
+              <small>Required or optional</small>
+              <strong>{selectedCard.requiredFor.includes(role.id) ? "Required" : "Optional"}</strong>
+            </div>
+            <div>
+              <small>Role access</small>
+              <strong>{selectedCard.allowedRoles.includes(role.id) ? role.name : "Locked for this role"}</strong>
+            </div>
+          </div>
+          <div className="info-tip">
+            <span>{selectedCard.tip}</span>
+          </div>
+
+          {selectedSubfeature ? (
+            <div className="subfeature-detail-card">
+              <small>Selected subfeature</small>
+              <strong>{selectedSubfeature.name}</strong>
+              <p>{selectedSubfeature.description}</p>
+              <div className="chip-wrap">
+                {selectedSubfeature.requiredFor.includes(role.id) ? (
+                  <span className="mini-chip mini-chip--warning">Required for this role</span>
+                ) : null}
+                <span className="mini-chip">{selectedSubfeature.setupSummary}</span>
               </div>
-            ))}
-          </div>
+              <p className="subfeature-example">{selectedSubfeature.example}</p>
+            </div>
+          ) : (
+            <div className="subfeature-detail-card">
+              <small>Current focus</small>
+              <strong>Select a subfeature</strong>
+              <p>The right panel will explain what that subfeature does and why you might turn it on.</p>
+            </div>
+          )}
         </div>
-      </div>
-    </ModalFrame>
-  );
-}
-
-function LayerDrawer({
-  layer,
-  roleId,
-  available,
-  onClose
-}: {
-  layer: LayerDefinition;
-  roleId: RoleId;
-  available: boolean;
-  onClose: () => void;
-}) {
-  return (
-    <div className="drawer-backdrop" onClick={onClose}>
-      <aside className="drawer-panel" onClick={(event) => event.stopPropagation()}>
-        <div className="drawer-header">
-          <div>
-            <p className="section-kicker">Layer detail drawer</p>
-            <h3>{layer.name}</h3>
+      ) : (
+        <div className="info-card info-card--role">
+          <div className="panel-header">
+            <div>
+              <h2>{role.name}</h2>
+              <p>{role.whatYouSee}</p>
+            </div>
           </div>
-          <button className="icon-button" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </div>
-
-        {!available ? (
-          <div className="drawer-note">
-            <Lock size={14} />
-            {layer.lockedExplanation ?? "This layer is managed by another role."}
+          <div className="info-block">
+            <small>Setup focus</small>
+            <strong>{role.setupFocus}</strong>
           </div>
-        ) : null}
-
-        <div className="drawer-section">
-          <h4>What this layer teaches</h4>
-          <p>{layer.whatItIs}</p>
-          <p>{layer.whyItMatters}</p>
-          <p>{layer.whenToUse}</p>
-        </div>
-
-        <div className="drawer-section">
-          <h4>Setup steps</h4>
-          <ul className="drawer-step-list">
-            {layer.steps.map((step) => (
-              <li key={step.id}>
-                <strong>{step.title}</strong>
-                <p>{step.description}</p>
-                <small>{step.required ? "Required" : "Optional"}</small>
+          <ul className="plain-list">
+            {role.accessSummary.map((item) => (
+              <li key={item}>
+                <Check size={14} />
+                {item}
               </li>
             ))}
           </ul>
         </div>
+      )}
 
-        <div className="drawer-section">
-          <h4>Feature access for this role</h4>
-          <div className="feature-stack">
-            {layer.featureIds.map((featureId) => (
-              <FeatureTile key={featureId} feature={getFeatureById(featureId)} roleId={roleId} />
-            ))}
+        <div className="info-card">
+          <div className="panel-header">
+            <div>
+              <h2>Locked cards</h2>
+            <p>These stay disabled because of role or permission limits.</p>
           </div>
         </div>
+        <div className="chip-wrap">
+          {lockedCards.length ? (
+            lockedCards.map((card) => (
+              <span key={card.id} className="mini-chip">
+                {card.label}
+              </span>
+            ))
+          ) : (
+            <span className="muted-copy">This role can use the full card library.</span>
+          )}
+        </div>
+      </div>
 
-        <div className="drawer-section">
-          <h4>Dependencies</h4>
-          <div className="chip-wrap">
-            {layer.dependencies.length ? (
-              layer.dependencies.map((dependency) => <span key={dependency} className="mini-chip">{getLayerById(dependency).name}</span>)
-            ) : (
-              <span className="muted-copy">No earlier layer required.</span>
-            )}
+      <div className="launch-card">
+        <div className="panel-header">
+          <div>
+            <h2>Launch</h2>
+            <p>Build the required cards, then create the website.</p>
           </div>
         </div>
-      </aside>
+        <div className="launch-stats">
+          <div className="launch-stat">
+            <span>Required left</span>
+            <strong>{requiredCardsRemaining.length}</strong>
+          </div>
+          <div className="launch-stat">
+            <span>Optional left</span>
+            <strong>{optionalCardsRemaining.length}</strong>
+          </div>
+        </div>
+        {requiredCardsRemaining.length ? (
+          <div className="info-block">
+            <small>Still required</small>
+            <div className="chip-wrap">
+              {requiredCardsRemaining.map((card) => (
+                <span key={card.id} className="mini-chip mini-chip--warning">
+                  {card.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="info-tip">
+            <Check size={14} />
+            <span>The required cards are built. You can launch now.</span>
+          </div>
+        )}
+        <button className="launch-button" disabled={!snapshot.launchReady} onClick={onLaunch}>
+          <Rocket size={18} />
+          Launch website
+        </button>
+      </div>
     </div>
   );
 }
 
-function ConfigModal({
-  layer,
+function SubfeaturePromptModal({
+  card,
+  subfeature,
   values,
   onChange,
-  onClose
+  onCancel,
+  onSave
 }: {
-  layer: LayerDefinition;
-  values: LayerConfigValues;
-  onChange: (key: string, value: string | boolean) => void;
-  onClose: () => void;
+  card: LibraryCardDefinition;
+  subfeature: SubfeatureDefinition;
+  values: PromptValues;
+  onChange: (fieldId: string, value: string | boolean) => void;
+  onCancel: () => void;
+  onSave: () => void;
 }) {
   return (
-    <ModalFrame title={`${layer.name} config`} subtitle="Simple settings that shape how this layer behaves." onClose={onClose}>
-      <div className="modal-form">
-        {layer.configSchema.map((field) => (
-          <label key={field.id} className="form-field">
-            <span>{field.label}</span>
-            {field.type === "select" ? (
-              <select value={String(values[field.id] ?? "")} onChange={(event) => onChange(field.id, event.target.value)}>
-                {field.options?.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            ) : field.type === "textarea" ? (
-              <textarea
-                value={String(values[field.id] ?? "")}
-                placeholder={field.placeholder}
-                onChange={(event) => onChange(field.id, event.target.value)}
-              />
-            ) : field.type === "toggle" ? (
-              <button
-                type="button"
-                className={`toggle-button ${values[field.id] ? "toggle-button--on" : ""}`}
-                onClick={() => onChange(field.id, !Boolean(values[field.id]))}
-              >
-                <span />
-                {Boolean(values[field.id]) ? "Enabled" : "Disabled"}
-              </button>
-            ) : (
-              <input
-                type="text"
-                value={String(values[field.id] ?? "")}
-                placeholder={field.placeholder}
-                onChange={(event) => onChange(field.id, event.target.value)}
-              />
-            )}
-          </label>
-        ))}
+    <ModalFrame
+      title={`Turn on ${subfeature.name}`}
+      subtitle={`${subfeature.setupSummary} Add the minimum information below to enable it inside ${card.label}.`}
+      onClose={onCancel}
+    >
+      <div className="prompt-stack">
+        <div className="info-block">
+          <small>What this helps with</small>
+          <strong>{subfeature.example}</strong>
+        </div>
+
+        <div className="field-stack">
+          {subfeature.promptFields.map((field) => (
+            <label key={field.id} className="field-block">
+              <div className="field-label-row">
+                <span>{field.label}</span>
+                {field.required ? <small>Required</small> : <small>Optional</small>}
+              </div>
+
+              {field.type === "select" ? (
+                <select value={String(values[field.id] ?? "")} onChange={(event) => onChange(field.id, event.target.value)}>
+                  {field.options?.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              ) : field.type === "textarea" ? (
+                <textarea
+                  value={String(values[field.id] ?? "")}
+                  placeholder={field.placeholder}
+                  onChange={(event) => onChange(field.id, event.target.value)}
+                />
+              ) : field.type === "toggle" ? (
+                <button
+                  type="button"
+                  className={`toggle-button ${values[field.id] ? "toggle-button--on" : ""}`}
+                  onClick={() => onChange(field.id, !Boolean(values[field.id]))}
+                >
+                  <span />
+                  {values[field.id] ? "On" : "Off"}
+                </button>
+              ) : (
+                <input
+                  type="text"
+                  value={String(values[field.id] ?? "")}
+                  placeholder={field.placeholder}
+                  onChange={(event) => onChange(field.id, event.target.value)}
+                />
+              )}
+
+              <p>{field.helperText}</p>
+            </label>
+          ))}
+        </div>
+
+        <div className="panel-button-row">
+          <button className="secondary-button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="primary-button" onClick={onSave}>
+            Save and enable
+          </button>
+        </div>
       </div>
     </ModalFrame>
   );
 }
 
-function TemplateBuilderModal({
+function LaunchSuccessScreen({
   role,
-  activeLayers,
-  draft,
-  onDraftChange,
-  onClose,
-  onSave
+  builtCards,
+  optionalCardsRemaining,
+  snapshot,
+  onReset
 }: {
   role: RoleDefinition;
-  activeLayers: LayerDefinition[];
-  draft: { name: string; description: string };
-  onDraftChange: (next: { name: string; description: string }) => void;
-  onClose: () => void;
-  onSave: () => void;
+  builtCards: LibraryCardDefinition[];
+  optionalCardsRemaining: LibraryCardDefinition[];
+  snapshot: OnboardingSnapshot;
+  onReset: () => void;
 }) {
+  const launchedCards = builtCards
+    .map((card) => ({
+      card,
+      enabledSubfeatures: card.subfeatures.filter((subfeature) => snapshot.subfeatureToggles[card.id]?.[subfeature.id])
+    }))
+    .filter((item) => item.enabledSubfeatures.length > 0);
+
+  const [activeCardId, setActiveCardId] = useState<LibraryCardId | null>(launchedCards[0]?.card.id ?? null);
+  const [activeSubfeatureId, setActiveSubfeatureId] = useState<string | null>(
+    launchedCards[0]?.enabledSubfeatures[0]?.id ?? null
+  );
+
+  useEffect(() => {
+    if (!launchedCards.length) {
+      setActiveCardId(null);
+      setActiveSubfeatureId(null);
+      return;
+    }
+
+    const activeCardStillExists = launchedCards.some((item) => item.card.id === activeCardId);
+    if (!activeCardStillExists) {
+      setActiveCardId(launchedCards[0].card.id);
+      setActiveSubfeatureId(launchedCards[0].enabledSubfeatures[0]?.id ?? null);
+      return;
+    }
+
+    const currentCard = launchedCards.find((item) => item.card.id === activeCardId);
+    const currentSubfeatureStillExists = currentCard?.enabledSubfeatures.some((item) => item.id === activeSubfeatureId);
+    if (!currentSubfeatureStillExists) {
+      setActiveSubfeatureId(currentCard?.enabledSubfeatures[0]?.id ?? null);
+    }
+  }, [activeCardId, activeSubfeatureId, launchedCards]);
+
+  const activeCardGroup = launchedCards.find((item) => item.card.id === activeCardId) ?? launchedCards[0] ?? null;
+  const activeSubfeature =
+    activeCardGroup?.enabledSubfeatures.find((item) => item.id === activeSubfeatureId) ??
+    activeCardGroup?.enabledSubfeatures[0] ??
+    null;
+
   return (
-    <ModalFrame title="Custom Template Builder" subtitle={`Save a reusable setup template for ${role.title.toLowerCase()} users.`} onClose={onClose}>
-      <div className="modal-card">
-        <h4>Template layers</h4>
-        <div className="chip-wrap">
-          {activeLayers.map((layer) => (
-            <span key={layer.id} className="mini-chip">{layer.name}</span>
-          ))}
+    <section className="launched-site">
+      <header className="launched-site-header">
+        <div className="brand-mark">
+          <div className="brand-logo">
+            <span className="brand-cut" />
+          </div>
+          <div className="brand-copy">
+            <strong>Lofty</strong>
+            <span>Setup Studio</span>
+          </div>
         </div>
+
+        <nav className="launched-nav" aria-label="Built website sections">
+          {launchedCards.map(({ card, enabledSubfeatures }) => (
+            <div
+              key={card.id}
+              className={`launched-nav-item ${activeCardGroup?.card.id === card.id ? "launched-nav-item--active" : ""}`}
+              onMouseEnter={() => {
+                setActiveCardId(card.id);
+                setActiveSubfeatureId(enabledSubfeatures[0]?.id ?? null);
+              }}
+            >
+              <button
+                className="launched-nav-trigger"
+                onClick={() => {
+                  setActiveCardId(card.id);
+                  setActiveSubfeatureId(enabledSubfeatures[0]?.id ?? null);
+                }}
+              >
+                {card.label}
+              </button>
+
+              <div className="launched-nav-dropdown">
+                {enabledSubfeatures.map((subfeature) => (
+                  <button
+                    key={subfeature.id}
+                    className={`launched-dropdown-item ${activeSubfeature?.id === subfeature.id ? "launched-dropdown-item--active" : ""}`}
+                    onClick={() => {
+                      setActiveCardId(card.id);
+                      setActiveSubfeatureId(subfeature.id);
+                    }}
+                  >
+                    {subfeature.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <div className="success-actions">
+          <button className="primary-button" onClick={onReset}>
+            Start another setup
+          </button>
+        </div>
+      </header>
+
+      <div className="launched-site-body">
+        <article className="launched-feature-stage">
+          <div className="launched-stage-surface">
+            <p className="section-kicker">Website created</p>
+            <h1>{activeSubfeature?.name ?? "Your Lofty launch is ready"}</h1>
+            <p>
+              {activeCardGroup
+                ? `${activeCardGroup.card.label} is live with the subfeatures you enabled during setup.`
+                : `The required cards are built, and ${role.name.toLowerCase()} users can now work inside the setup you assembled.`}
+            </p>
+          </div>
+        </article>
+
+        <article className="success-card">
+          <h2>What was built</h2>
+          <div className="chip-wrap">
+            {builtCards.map((card) => (
+              <span key={card.id} className="mini-chip mini-chip--success">
+                {card.label}
+              </span>
+            ))}
+          </div>
+        </article>
+
+        <article className="success-card">
+          <h2>Enabled navigation</h2>
+          <div className="chip-wrap">
+            {launchedCards.length ? (
+              launchedCards.flatMap(({ card, enabledSubfeatures }) =>
+                enabledSubfeatures.map((subfeature) => (
+                  <span key={`${card.id}-${subfeature.id}`} className="mini-chip mini-chip--success">
+                    {card.label}: {subfeature.name}
+                  </span>
+                ))
+              )
+            ) : (
+              <span className="muted-copy">No subfeatures were enabled for navigation.</span>
+            )}
+          </div>
+        </article>
+
+        <article className="success-card">
+          <h2>Still optional</h2>
+          <div className="chip-wrap">
+            {optionalCardsRemaining.length ? (
+              optionalCardsRemaining.map((card) => (
+                <span key={card.id} className="mini-chip mini-chip--warning">
+                  {card.label}
+                </span>
+              ))
+            ) : (
+              <span className="muted-copy">No optional cards are left.</span>
+            )}
+          </div>
+        </article>
       </div>
-      <div className="modal-form">
-        <label className="form-field">
-          <span>Template name</span>
-          <input
-            type="text"
-            placeholder="Office launch template"
-            value={draft.name}
-            onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
-          />
-        </label>
-        <label className="form-field">
-          <span>Description</span>
-          <textarea
-            placeholder="Use this when a new office admin needs a clean, guided setup path."
-            value={draft.description}
-            onChange={(event) => onDraftChange({ ...draft, description: event.target.value })}
-          />
-        </label>
-      </div>
-      <div className="panel-button-row">
-        <button className="secondary-button" onClick={onClose}>
-          Cancel
-        </button>
-        <button className="primary-button" onClick={onSave} disabled={!draft.name.trim()}>
-          Save template
-        </button>
-      </div>
-    </ModalFrame>
+    </section>
+  );
+}
+
+function DragPreview({ card }: { card: LibraryCardDefinition }) {
+  return (
+    <div className="drag-preview">
+      <WandSparkles size={16} />
+      <span>{card.label}</span>
+    </div>
   );
 }
 
@@ -1674,7 +1480,7 @@ function ModalFrame({
   title: string;
   subtitle: string;
   onClose: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -1685,100 +1491,11 @@ function ModalFrame({
             <p>{subtitle}</p>
           </div>
           <button className="icon-button" onClick={onClose}>
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
         {children}
       </div>
-    </div>
-  );
-}
-
-function WebsitePreview({
-  role,
-  layerConfigs,
-  readiness,
-  completedLayers,
-  onBack
-}: {
-  role: RoleDefinition;
-  layerConfigs: Partial<Record<LayerId, LayerConfigValues>>;
-  readiness: number;
-  completedLayers: LayerDefinition[];
-  onBack: () => void;
-}) {
-  const profile = layerConfigs["profile-branding"] ?? {};
-  const website = layerConfigs["website"] ?? {};
-  const market = String(profile.marketFocus || "your market");
-  const businessName = String(profile.businessName || "Your Lofty Brand");
-  const headline = String(website.headline || `Real estate guidance built for ${market}`);
-  const domain = String(website.domain || "your-site.loftyagent.com");
-  const websiteType = String(website.websiteType || "Agent Website");
-
-  return (
-    <section className="website-preview-page">
-      <div className="website-preview-toolbar">
-        <button className="secondary-button" onClick={onBack}>
-          Back to review
-        </button>
-        <div className="preview-status">
-          <span>{websiteType}</span>
-          <strong>{domain}</strong>
-          <small>{readiness}% ready at build time</small>
-        </div>
-      </div>
-
-      <div className="generated-site">
-        <section className="generated-site-hero">
-          <div className="generated-badge">Built from Lofty setup</div>
-          <h1>{headline}</h1>
-          <p>
-            {businessName} is now live with a Lofty-style launch site shaped by the selected role, completed setup layers,
-            and website generation choices.
-          </p>
-          <div className="generated-hero-actions">
-            <button className="primary-button">Search listings</button>
-            <button className="secondary-button">Get home value</button>
-          </div>
-        </section>
-
-        <section className="generated-site-grid">
-          <article className="generated-card">
-            <h3>What this site includes</h3>
-            <ul className="plain-list">
-              <li><Check size={14} /> Lofty-style brand hero and lead capture entry points</li>
-              <li><Check size={14} /> Ready for MLS / IDX activation and listing pages</li>
-              <li><Check size={14} /> Built from Profile, Website, and Communication setup data</li>
-            </ul>
-          </article>
-          <article className="generated-card">
-            <h3>Role-aware launch outcome</h3>
-            <p>{role.title} users see a launch path that matches the parts of Lofty they can actually operate.</p>
-            <div className="chip-wrap">
-              {completedLayers.slice(0, 8).map((layer) => (
-                <span key={layer.id} className="mini-chip mini-chip--success">{layer.name}</span>
-              ))}
-            </div>
-          </article>
-          <article className="generated-card">
-            <h3>Next recommended actions</h3>
-            <ul className="plain-list">
-              <li><ArrowRight size={14} /> Review listing search and lead capture blocks</li>
-              <li><ArrowRight size={14} /> Connect or confirm MLS feed status</li>
-              <li><ArrowRight size={14} /> Publish automation and communication workflows</li>
-            </ul>
-          </article>
-        </section>
-      </div>
-    </section>
-  );
-}
-
-function DragPreview({ layer }: { layer: LayerDefinition }) {
-  return (
-    <div className="drag-preview">
-      <Sparkles size={16} />
-      <span>{layer.name}</span>
     </div>
   );
 }

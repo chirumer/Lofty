@@ -8,127 +8,95 @@ export type RoleId =
   | "agent-user"
   | "lender";
 
-export type LayerId =
-  | "profile-branding"
-  | "website"
-  | "mls-idx"
-  | "communication"
-  | "lead-capture"
-  | "database-contacts"
-  | "lead-routing"
-  | "automation-smart-plans"
-  | "tasks-calendar"
-  | "ai-copilots"
+export type LibraryCardId =
+  | "crm"
+  | "sales"
   | "marketing"
+  | "content"
+  | "automation"
   | "reporting"
-  | "team-management"
-  | "transactions"
-  | "mobile-app"
-  | "marketplace-addons"
-  | "compliance-permissions";
+  | "marketplace"
+  | "ai-copilots";
 
-export type FeatureId = string;
-
-export type SetupPhase = "role-selection" | "overview" | "configure" | "review" | "website-live";
+export type SetupPhase = "role-selection" | "builder" | "launch-success";
+export type CardState = "not-started" | "draft" | "built";
+export type LockType = "role" | "permission" | "add-on";
+export type FieldType = "text" | "textarea" | "select" | "toggle";
 
 export interface RoleDefinition {
   id: RoleId;
-  title: string;
-  subtitle: string;
-  description: string;
-  accessLabel: string;
+  name: string;
+  summary: string;
+  whatYouSee: string;
   setupFocus: string;
   icon: LucideIcon;
   accessSummary: string[];
-  hiddenSummary: string[];
 }
 
-export interface FeatureDefinition {
-  id: FeatureId;
-  name: string;
-  description: string;
-  whatItIs: string;
-  whyItMatters: string;
-  whenToUse: string;
-  whoCanUse: RoleId[];
-  skipImpact: string;
-  example: string;
-  enabledByDefault?: boolean;
-}
-
-export interface StepDefinition {
-  id: string;
-  title: string;
-  description: string;
-  required: boolean;
-  featureId?: FeatureId;
-}
-
-export interface FieldDefinition {
+export interface PromptFieldDefinition {
   id: string;
   label: string;
-  type: "text" | "textarea" | "select" | "toggle";
+  type: FieldType;
+  helperText: string;
+  required?: boolean;
   placeholder?: string;
   options?: string[];
   defaultValue?: string | boolean;
 }
 
-export interface LayerDefinition {
-  id: LayerId;
+export interface SubfeatureDefinition {
+  id: string;
   name: string;
-  shortDescription: string;
   description: string;
-  whatItIs: string;
-  whyItMatters: string;
-  whenToUse: string;
-  whoCanUseLabel: string;
-  skipImpact: string;
-  example: string;
-  roles: RoleId[];
-  lockedExplanation?: string;
+  allowedRoles: RoleId[];
   requiredFor: RoleId[];
-  skippableFor: RoleId[];
-  dependencies: LayerId[];
-  unlocks: string[];
-  featureIds: FeatureId[];
-  steps: StepDefinition[];
-  configSchema: FieldDefinition[];
+  defaultEnabled: boolean;
+  setupSummary: string;
+  lockedReason: string;
+  example: string;
+  promptFields: PromptFieldDefinition[];
 }
 
-export interface TemplateDefinition {
+export interface LibraryCardDefinition {
+  id: LibraryCardId;
+  label: string;
+  description: string;
+  allowedRoles: RoleId[];
+  requiredFor: RoleId[];
+  icon: LucideIcon;
+  whatItDoes: string;
+  whyItMatters: string;
+  tip: string;
+  lockType?: LockType;
+  lockExplanation: string;
+  subfeatures: SubfeatureDefinition[];
+}
+
+export interface PresetDefinition {
   id: string;
   name: string;
   description: string;
   roleIds: RoleId[];
-  activeLayers: LayerId[];
-  pinnedLayers?: LayerId[];
-  skippedLayers?: LayerId[];
-  adminOnly?: boolean;
+  recommendedCards: LibraryCardId[];
 }
 
-export type LayerConfigValues = Record<string, string | boolean>;
+export type PromptValues = Record<string, string | boolean>;
+export type PromptConfigStore = Record<string, PromptValues>;
+export type CardToggleStore = Record<string, boolean>;
 
-export interface SavedTemplate {
-  id: string;
-  name: string;
-  description: string;
-  roleIds: RoleId[];
-  activeLayers: LayerId[];
-  pinnedLayers: LayerId[];
-  skippedLayers: LayerId[];
-  createdAt: number;
+export interface PromptTarget {
+  cardId: LibraryCardId;
+  subfeatureId: string;
 }
 
 export interface OnboardingSnapshot {
   selectedRole: RoleId | null;
-  activeLayers: LayerId[];
-  skippedLayers: LayerId[];
-  completedLayers: LayerId[];
-  pinnedLayers: LayerId[];
-  hiddenLayers: LayerId[];
-  featureOrder: Partial<Record<LayerId, FeatureId[]>>;
-  layerConfigs: Partial<Record<LayerId, LayerConfigValues>>;
-  stepCompletion: Record<string, boolean>;
-  savedTemplates: SavedTemplate[];
+  activeCardId: LibraryCardId | null;
+  cardStates: Partial<Record<LibraryCardId, CardState>>;
+  subfeatureToggles: Partial<Record<LibraryCardId, CardToggleStore>>;
+  subfeatureConfigs: Partial<Record<LibraryCardId, PromptConfigStore>>;
   phase: SetupPhase;
+  templatePreset: string | null;
+  pendingPrompt: PromptTarget | null;
+  launchReady: boolean;
 }
