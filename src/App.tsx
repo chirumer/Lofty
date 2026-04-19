@@ -79,6 +79,7 @@ import type {
   PromptValues,
   RoleDefinition,
   RoleId,
+  SmartPlanGuidePhase,
   SubfeatureDefinition
 } from "./types";
 import AICopilotsPanel from "./components/AICopilotsPanel";
@@ -95,7 +96,10 @@ import {
 import {
   buildIdxBuilderStarterPrompt,
   getDefaultCopilotModelId,
+  matchesSmartPlanHelpPrompt,
   isCopilotModelId,
+  SMART_PLAN_GUIDE_ACTION,
+  SMART_PLAN_GUIDE_RESPONSE,
   type CopilotChatMessage,
   type CopilotChatResponse,
   type CopilotModelId
@@ -111,6 +115,7 @@ import dialog2Image from "../dialog2.png";
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
 const COPILOT_STORAGE_KEY = "lofty-ai-copilots-panel-v1";
 const COPILOT_CLIENT_TIMEOUT_MS = 30000;
+const COPILOT_MIN_THINKING_MS = 1200;
 
 type MlsFeedFormValues = {
   sourceName: string;
@@ -408,13 +413,29 @@ function createBuilderSnapshot(roleId: RoleId, mode: "empty" | "auto"): Onboardi
   });
 }
 
-function createCopilotMessage(role: CopilotChatMessage["role"], content: string): CopilotChatMessage {
+function createCopilotMessage(
+  role: CopilotChatMessage["role"],
+  content: string,
+  action?: CopilotChatMessage["action"]
+): CopilotChatMessage {
   return {
     id: `copilot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     role,
     content: content.trim(),
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    action
   };
+}
+
+function waitForMinimumDuration(startedAt: number, durationMs: number) {
+  const remainingMs = durationMs - (Date.now() - startedAt);
+  if (remainingMs <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, remainingMs);
+  });
 }
 
 function isCopilotChatMessage(value: unknown): value is CopilotChatMessage {
@@ -427,7 +448,9 @@ function isCopilotChatMessage(value: unknown): value is CopilotChatMessage {
     typeof candidate.id === "string" &&
     (candidate.role === "user" || candidate.role === "assistant") &&
     typeof candidate.content === "string" &&
-    typeof candidate.createdAt === "string"
+    typeof candidate.createdAt === "string" &&
+    (typeof candidate.action === "undefined" ||
+      (candidate.action.kind === "smart-plan-guide" && typeof candidate.action.label === "string"))
   );
 }
 
@@ -1544,6 +1567,7 @@ function LaunchSuccessScreen({
   const [copilotIsSending, setCopilotIsSending] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
   const [copilotHydrated, setCopilotHydrated] = useState(false);
+  const [smartPlanGuidePhase, setSmartPlanGuidePhase] = useState<SmartPlanGuidePhase>("inactive");
   const copilotRequestIdRef = useRef(0);
   const negotiationFeature = useNegotiationFeatureState(DEMO_LISTING_ID);
 
@@ -1806,6 +1830,7 @@ function LaunchSuccessScreen({
       return;
     }
 
+    const requestStartedAt = Date.now();
     const requestId = copilotRequestIdRef.current + 1;
     copilotRequestIdRef.current = requestId;
     const userMessage = createCopilotMessage("user", nextPrompt);
@@ -1817,6 +1842,21 @@ function LaunchSuccessScreen({
 
     if (!promptOverride) {
       setCopilotDraft("");
+    }
+
+    if (matchesSmartPlanHelpPrompt(nextPrompt)) {
+      await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      setCopilotMessages([
+        ...nextMessages,
+        createCopilotMessage("assistant", SMART_PLAN_GUIDE_RESPONSE, SMART_PLAN_GUIDE_ACTION)
+      ]);
+      setCopilotIsSending(false);
+      return;
     }
 
     try {
@@ -1844,6 +1884,12 @@ function LaunchSuccessScreen({
       }
 
       if (!response.ok || !payload.message) {
+        await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+        if (requestId !== copilotRequestIdRef.current) {
+          return;
+        }
+
         if (!promptOverride) {
           setCopilotDraft(nextPrompt);
         }
@@ -1851,8 +1897,16 @@ function LaunchSuccessScreen({
         return;
       }
 
+      await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
       setCopilotMessages([...nextMessages, payload.message]);
     } catch (error) {
+      await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
       if (requestId !== copilotRequestIdRef.current) {
         return;
       }
@@ -1901,12 +1955,33 @@ function LaunchSuccessScreen({
     void sendCopilotMessage(starterPrompt);
   }
 
+  function handleCopilotMessageAction(actionKind: NonNullable<CopilotChatMessage["action"]>["kind"]) {
+    if (actionKind !== "smart-plan-guide") {
+      return;
+    }
+
+    if (!launchedSubfeatureIds.has("smart-plans")) {
+      setCopilotMessages((current) => [
+        ...current,
+        createCopilotMessage(
+          "assistant",
+          "Smart Plans is not available in this launched workspace yet, so I can't open the guided automation setup here."
+        )
+      ]);
+      return;
+    }
+
+    setActiveView("automation-smart-plans");
+    setSmartPlanGuidePhase((current) => (current === "inactive" || current === "completed" ? "index-create" : current));
+  }
+
   function handleClearCopilotChat() {
     copilotRequestIdRef.current += 1;
     setCopilotMessages([]);
     setCopilotDraft("");
     setCopilotError(null);
     setCopilotIsSending(false);
+    setSmartPlanGuidePhase("inactive");
   }
 
   return (
@@ -1965,6 +2040,7 @@ function LaunchSuccessScreen({
                 }
               }}
               onClearChat={handleClearCopilotChat}
+              onMessageAction={handleCopilotMessageAction}
               onSend={() => void sendCopilotMessage()}
               onStartBuilding={handleStartBuildingPrompt}
             />
@@ -2051,7 +2127,12 @@ function LaunchSuccessScreen({
           />
         ) : activeView === "automation-smart-plans" ? (
           <div className="lofty-shell-section">
-            <SmartPlansWorkspace role={role} />
+            <SmartPlansWorkspace
+              role={role}
+              guidePhase={smartPlanGuidePhase}
+              onGuideAdvance={setSmartPlanGuidePhase}
+              onGuideExit={() => setSmartPlanGuidePhase("inactive")}
+            />
           </div>
         ) : activeView === "listings" ? (
           <ListingsWorkspace

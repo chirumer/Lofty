@@ -4,6 +4,7 @@ export type CopilotModelId =
   | "gemini-3-flash-preview";
 
 export type CopilotChatRole = "user" | "assistant";
+export type CopilotChatActionKind = "smart-plan-guide";
 
 export interface CopilotModelOption {
   id: CopilotModelId;
@@ -11,11 +12,17 @@ export interface CopilotModelOption {
   isDefault: boolean;
 }
 
+export interface CopilotChatAction {
+  kind: CopilotChatActionKind;
+  label: string;
+}
+
 export interface CopilotChatMessage {
   id: string;
   role: CopilotChatRole;
   content: string;
   createdAt: string;
+  action?: CopilotChatAction;
 }
 
 export interface CopilotListingSummary {
@@ -71,6 +78,12 @@ export const COPILOT_MODEL_OPTIONS: CopilotModelOption[] = [
 ];
 
 const DEFAULT_COPILOT_MODEL_ID = COPILOT_MODEL_OPTIONS.find((option) => option.isDefault)?.id ?? COPILOT_MODEL_OPTIONS[0].id;
+export const SMART_PLAN_GUIDE_RESPONSE =
+  "To set this up, head to the Automations tab and create a new Smart Plan that triggers when a lead is created from your website. Within the plan, use the Populate Variable action to grab your nextDayAvailability and follow it with an Auto Email that inserts the #availability# token directly into your message. It's a great way to stay responsive while you're busy, and I can guide you through the specific configuration steps if you need a hand.";
+export const SMART_PLAN_GUIDE_ACTION: CopilotChatAction = {
+  kind: "smart-plan-guide",
+  label: "Guide Me"
+};
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -88,6 +101,11 @@ export function isCopilotModelId(value: string): value is CopilotModelId {
 
 export function getCopilotModelOption(modelId: string) {
   return COPILOT_MODEL_OPTIONS.find((option) => option.id === modelId) ?? COPILOT_MODEL_OPTIONS[0];
+}
+
+export function matchesSmartPlanHelpPrompt(value: string) {
+  const normalized = value.trim();
+  return /\bhelp\b/i.test(normalized) && /\bsmart\b/i.test(normalized) && /\bplans?\b/i.test(normalized);
 }
 
 export function buildCopilotSystemInstruction(context: CopilotChatContext) {
