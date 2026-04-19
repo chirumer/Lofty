@@ -1,3 +1,6 @@
+/*!************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[14].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[14].oneOf[10].use[3]!./src/styles.css ***!
+  \************************************************************************************************************************************************************************************************************************************************************/
 :root {
   color-scheme: light;
   --bg: #f5f8fd;
@@ -88,18 +91,21 @@ a {
 }
 
 .top-nav {
+  position: -webkit-sticky;
   position: sticky;
   top: 0;
   z-index: 30;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
+  grid-gap: 28px;
   gap: 28px;
   min-height: var(--nav-height);
   padding: 18px 28px;
   border-bottom: 1px solid rgba(216, 225, 241, 0.72);
   background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+          backdrop-filter: blur(18px);
 }
 
 .brand-mark {
@@ -182,6 +188,7 @@ a {
 
 .builder-shell {
   display: grid;
+  grid-gap: 22px;
   gap: 22px;
 }
 
@@ -254,6 +261,7 @@ a {
 .overview-strip {
   display: grid;
   grid-template-columns: minmax(260px, 420px);
+  grid-gap: 14px;
   gap: 14px;
   padding: 12px 14px;
   border-radius: var(--radius-xl);
@@ -318,6 +326,7 @@ a {
 
 .builder-layout {
   display: grid;
+  grid-gap: 20px;
   gap: 20px;
   align-items: start;
 }
@@ -332,6 +341,7 @@ a {
 }
 
 .left-panel {
+  position: -webkit-sticky;
   position: sticky;
   top: calc(var(--nav-height) + 20px);
 }
@@ -351,11 +361,13 @@ a {
 .layer-library,
 .launch-summary-stack {
   display: grid;
+  grid-gap: 16px;
   gap: 16px;
 }
 
 .library-controls {
   display: grid;
+  grid-gap: 12px;
   gap: 12px;
 }
 
@@ -395,6 +407,7 @@ textarea::placeholder {
 .prompt-stack,
 .readiness-list {
   display: grid;
+  grid-gap: 12px;
   gap: 12px;
 }
 
@@ -412,6 +425,7 @@ textarea::placeholder {
 
 .library-layer-card {
   display: grid;
+  grid-gap: 12px;
   gap: 12px;
   padding: 14px;
   border-radius: 10px;
@@ -426,10 +440,12 @@ textarea::placeholder {
 }
 
 .library-layer-card--draggable {
+  cursor: -webkit-grab;
   cursor: grab;
 }
 
 .library-layer-card--draggable:active {
+  cursor: -webkit-grabbing;
   cursor: grabbing;
 }
 
@@ -638,6 +654,7 @@ textarea::placeholder {
 .empty-workspace {
   display: grid;
   place-items: center;
+  grid-gap: 10px;
   gap: 10px;
   min-height: 440px;
   max-width: 360px;
@@ -669,6 +686,7 @@ textarea::placeholder {
 
 .active-card {
   display: grid;
+  grid-gap: 18px;
   gap: 18px;
   min-height: 560px;
   padding: 0;
@@ -707,6 +725,7 @@ textarea::placeholder {
 
 .active-tab-site-title {
   display: grid;
+  grid-gap: 4px;
   gap: 4px;
 }
 
@@ -720,6 +739,7 @@ textarea::placeholder {
 
 .active-card-header-meta {
   display: grid;
+  grid-gap: 10px;
   gap: 10px;
   justify-items: end;
 }
@@ -727,6 +747,7 @@ textarea::placeholder {
 .active-card-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-gap: 18px;
   gap: 18px;
   padding: 22px;
 }
@@ -734,6 +755,7 @@ textarea::placeholder {
 .active-card-subfeatures,
 .subfeature-detail-card {
   display: grid;
+  grid-gap: 14px;
   gap: 14px;
   align-content: start;
   padding: 16px;
@@ -750,6 +772,7 @@ textarea::placeholder {
 .subfeature-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  grid-gap: 16px;
   gap: 16px;
   padding: 14px;
   border: 1px solid #e7eef9;
@@ -775,6 +798,7 @@ textarea::placeholder {
 
 .subfeature-row-copy {
   display: grid;
+  grid-gap: 6px;
   gap: 6px;
 }
 
@@ -811,6 +835,7 @@ textarea::placeholder {
 
 .subfeature-config-dropdown {
   display: grid;
+  grid-gap: 14px;
   gap: 14px;
   grid-column: 1 / -1;
   padding-top: 8px;
@@ -819,6 +844,7 @@ textarea::placeholder {
 
 .minimal-config-list {
   display: grid;
+  grid-gap: 12px;
   gap: 12px;
 }
 
@@ -872,6 +898,7 @@ textarea::placeholder {
 
 .subfeature-config-header {
   display: grid;
+  grid-gap: 4px;
   gap: 4px;
 }
 
@@ -882,11 +909,13 @@ textarea::placeholder {
 
 .field-stack {
   display: grid;
+  grid-gap: 14px;
   gap: 14px;
 }
 
 .field-block {
   display: grid;
+  grid-gap: 8px;
   gap: 8px;
 }
 
@@ -932,6 +961,7 @@ textarea::placeholder {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  width: -moz-fit-content;
   width: fit-content;
   min-width: 92px;
   min-height: 40px;
@@ -1023,6 +1053,7 @@ textarea::placeholder {
 
 .active-card-footer {
   display: grid;
+  grid-gap: 16px;
   gap: 16px;
   margin-top: auto;
   align-items: end;
@@ -1063,6 +1094,7 @@ textarea::placeholder {
 .info-card,
 .launch-card {
   display: grid;
+  grid-gap: 16px;
   gap: 16px;
 }
 
@@ -1082,6 +1114,7 @@ textarea::placeholder {
 .info-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-gap: 12px;
   gap: 12px;
 }
 
@@ -1114,11 +1147,13 @@ textarea::placeholder {
 
 .success-page {
   display: grid;
+  grid-gap: 24px;
   gap: 24px;
 }
 
 .launched-site {
   display: grid;
+  grid-gap: 18px;
   gap: 18px;
 }
 
@@ -1202,6 +1237,7 @@ textarea::placeholder {
 .launched-nav-item:hover .launched-nav-dropdown,
 .launched-nav-item:focus-within .launched-nav-dropdown {
   display: grid;
+  grid-gap: 6px;
   gap: 6px;
 }
 
@@ -1224,6 +1260,7 @@ textarea::placeholder {
 
 .dashboard-page {
   display: grid;
+  grid-gap: 18px;
   gap: 18px;
 }
 
@@ -1288,12 +1325,14 @@ textarea::placeholder {
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-gap: 18px;
   gap: 18px;
   align-items: start;
 }
 
 .dashboard-widget {
   display: grid;
+  grid-gap: 14px;
   gap: 14px;
   min-height: 300px;
   padding: 20px;
@@ -1340,6 +1379,7 @@ textarea::placeholder {
 .compact-list,
 .opportunity-list {
   display: grid;
+  grid-gap: 12px;
   gap: 12px;
 }
 
@@ -1387,6 +1427,7 @@ textarea::placeholder {
 .task-list-main > div,
 .people-card > div {
   display: grid;
+  grid-gap: 4px;
   gap: 4px;
 }
 
@@ -1461,6 +1502,7 @@ textarea::placeholder {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  width: -moz-fit-content;
   width: fit-content;
   min-height: 38px;
   padding: 0 12px;
@@ -1479,6 +1521,7 @@ textarea::placeholder {
 .widget-metric {
   display: grid;
   justify-items: center;
+  grid-gap: 8px;
   gap: 8px;
   padding: 14px 10px;
   border-right: 1px solid #e6ecf8;
@@ -1502,12 +1545,14 @@ textarea::placeholder {
 .task-chip-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-gap: 10px;
   gap: 10px;
 }
 
 .task-pill {
   display: grid;
   justify-items: center;
+  grid-gap: 8px;
   gap: 8px;
   padding: 14px 10px;
   border-radius: 16px;
@@ -1588,6 +1633,7 @@ textarea::placeholder {
   display: grid;
   place-items: center;
   align-content: center;
+  grid-gap: 10px;
   gap: 10px;
   min-height: 180px;
   color: var(--ink-muted);
@@ -1603,6 +1649,7 @@ textarea::placeholder {
 .people-workspace,
 .subfeature-workspace {
   display: grid;
+  grid-gap: 18px;
   gap: 18px;
 }
 
@@ -1675,6 +1722,7 @@ textarea::placeholder {
     minmax(170px, 1.2fr)
     minmax(150px, 1fr);
   min-width: 1700px;
+  grid-gap: 16px;
   gap: 16px;
   align-items: start;
 }
@@ -1708,6 +1756,7 @@ textarea::placeholder {
 
 .people-cell {
   display: grid;
+  grid-gap: 4px;
   gap: 4px;
   min-width: 0;
 }
@@ -1739,6 +1788,7 @@ textarea::placeholder {
 .subfeature-workspace-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-gap: 16px;
   gap: 16px;
 }
 
@@ -1760,6 +1810,7 @@ textarea::placeholder {
 .launched-site-body {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(280px, 0.8fr));
+  grid-gap: 18px;
   gap: 18px;
   align-items: start;
 }
@@ -1815,6 +1866,7 @@ textarea::placeholder {
 .success-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr;
+  grid-gap: 18px;
   gap: 18px;
   align-items: start;
 }
@@ -1848,6 +1900,7 @@ textarea::placeholder {
 
 .website-preview-body {
   display: grid;
+  grid-gap: 18px;
   gap: 18px;
   padding: 24px;
   min-height: 280px;
@@ -1878,7 +1931,8 @@ textarea::placeholder {
   place-items: center;
   padding: 24px;
   background: rgba(17, 33, 67, 0.36);
-  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+          backdrop-filter: blur(6px);
   z-index: 60;
 }
 
@@ -1939,6 +1993,7 @@ textarea::placeholder {
   display: grid;
   align-content: center;
   justify-items: center;
+  grid-gap: 28px;
   gap: 28px;
   min-height: 100vh;
   padding: 40px 48px 48px;
@@ -1955,6 +2010,7 @@ textarea::placeholder {
 .role-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-gap: 16px;
   gap: 16px;
   width: 100%;
 }
@@ -1963,6 +2019,7 @@ textarea::placeholder {
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: center;
+  grid-gap: 18px;
   gap: 18px;
   min-height: 126px;
   padding: 20px 18px;
@@ -1992,6 +2049,7 @@ textarea::placeholder {
 
 .role-card-copy {
   display: grid;
+  grid-gap: 6px;
   gap: 6px;
 }
 
@@ -2204,3 +2262,4 @@ textarea::placeholder {
     width: 100%;
   }
 }
+

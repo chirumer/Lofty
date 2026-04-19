@@ -1760,36 +1760,78 @@ function PeopleWorkspace({
         ))}
       </div>
 
-      <div className="people-grid">
-        {people.map((person) => (
-          <article key={person.id} className="people-card">
-            <div className="people-card-header">
-              <div>
+      <div className="people-table-shell">
+        <div className="people-table-header">
+          <span>Name</span>
+          <span>Contact info</span>
+          <span>Lead type</span>
+          <span>Source</span>
+          <span>Stage</span>
+          <span>Score</span>
+          <span>Last touch</span>
+          <span>Last reply</span>
+          <span>Communication update</span>
+          <span>Interested listing</span>
+          <span>Tags / segments</span>
+          <span>Assigned agent</span>
+        </div>
+
+        <div className="people-table-body">
+          {people.map((person) => (
+            <article key={person.id} className="people-row">
+              <div className="people-cell people-cell--name">
                 <strong>{person.name}</strong>
-                <span>
-                  {person.roles.join(" · ")} · {person.source}
-                </span>
+                <span>{person.roles.join(" · ")}</span>
               </div>
-              <div className="lead-score-badge">{person.score}</div>
-            </div>
-            <div className="chip-wrap">
-              <span className="mini-chip">{person.stage}</span>
-              {person.segments?.slice(0, 2).map((segment) => (
-                <span key={segment} className="mini-chip">
-                  {segment}
-                </span>
-              ))}
-            </div>
-            <p className="people-card-activity">{person.lastActivity ?? "No recent activity recorded."}</p>
-            <div className="people-card-footer">
-              <span>{person.savedSearch ?? person.followUpLabel ?? person.birthdayLabel ?? "Lead profile ready"}</span>
-              <button className="widget-link-row">
-                Open lead
-                <ChevronRight size={14} />
-              </button>
-            </div>
-          </article>
-        ))}
+              <div className="people-cell">
+                <strong>{person.phone}</strong>
+                <span>{person.email}</span>
+              </div>
+              <div className="people-cell">
+                <span>{person.leadType}</span>
+              </div>
+              <div className="people-cell">
+                <span>{person.source}</span>
+              </div>
+              <div className="people-cell">
+                <span>{person.stage}</span>
+              </div>
+              <div className="people-cell">
+                <div className="lead-score-badge">{person.score}</div>
+              </div>
+              <div className="people-cell">
+                <span>{person.lastTouch}</span>
+              </div>
+              <div className="people-cell">
+                <span>{person.lastReply}</span>
+              </div>
+              <div className="people-cell">
+                <strong>{person.communicationSummary}</strong>
+                <span>{person.lastActivity ?? "No recent activity"}</span>
+              </div>
+              <div className="people-cell">
+                <strong>{person.interestedListing}</strong>
+                <span>{person.savedSearch ?? "Lead profile ready"}</span>
+              </div>
+              <div className="people-cell">
+                <div className="chip-wrap">
+                  {person.segments?.slice(0, 2).map((segment) => (
+                    <span key={segment} className="mini-chip">
+                      {segment}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="people-cell people-cell--owner">
+                <strong>{person.assignedAgent}</strong>
+                <button className="widget-link-row">
+                  Open lead
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );

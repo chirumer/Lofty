@@ -115,10 +115,17 @@ export interface LeadTransaction {
 export interface DashboardPerson {
   id: string;
   name: string;
+  email: string;
+  phone: string;
   leadType: string;
   source: string;
   stage: string;
   score: number;
+  assignedAgent: string;
+  lastTouch: string;
+  lastReply: string;
+  communicationSummary: string;
+  interestedListing: string;
   roles: string[];
   views: LeadViewId[];
   untouched?: boolean;
