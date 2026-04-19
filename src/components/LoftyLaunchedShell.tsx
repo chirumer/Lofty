@@ -32,6 +32,27 @@ type UtilityItem = {
   opensProfileSwitch?: boolean;
 };
 
+type SubmenuGuide = {
+  imageSrc: string;
+  text: string;
+};
+
+type UtilityPanelOverride = {
+  itemId: string;
+  title?: string;
+  content: ReactNode;
+};
+
+type ShellGuidedOverlay =
+  | {
+      mode: "blocked";
+      onClick: () => void;
+      content: ReactNode;
+    }
+  | {
+      mode: "menu";
+    };
+
 const utilityItems: UtilityItem[] = [
   {
     id: "messages",
@@ -167,18 +188,27 @@ function MenuItemAction({
 
 function MenuSubitem({
   activeView,
+  isGuidedMenuActive,
+  guidedSubmenuParentLabel,
+  highlightedSubmenuLabel,
   item,
   onNavigateHome,
-  onNavigate
+  onNavigate,
+  submenuGuide
 }: {
   activeView: LaunchedShellView;
+  isGuidedMenuActive?: boolean;
+  guidedSubmenuParentLabel?: string | null;
+  highlightedSubmenuLabel?: string | null;
   item: LaunchedNavItem;
   onNavigateHome: () => void;
   onNavigate: (view: LaunchedShellView) => void;
+  submenuGuide?: SubmenuGuide | null;
 }) {
   const [isNestedOpen, setIsNestedOpen] = useState(false);
   const closeTimerRef = useRef<number | null>(null);
   const isActive = item.view ? activeView === item.view : false;
+  const isGuided = Boolean(isGuidedMenuActive && guidedSubmenuParentLabel && highlightedSubmenuLabel === item.label);
   const itemAction = item.view ? () => onNavigate(item.view as LaunchedShellView) : item.href === "/" ? onNavigateHome : undefined;
 
   function clearCloseTimer() {
@@ -211,18 +241,28 @@ function MenuSubitem({
 
   if (nestedItems.length === 0) {
     return (
-      <MenuItemAction
-        {...attrs.dropdown}
-        className={`crm-only-header-menu__item crm-only-header-menu__subitem ${isActive ? "is-active" : ""}`.trim()}
-        href={item.href && item.href !== "/" ? item.href : undefined}
-        needicon=""
-        onAction={itemAction}
+      <div
+        className={`lofty-guided-subitem ${isGuided ? "lofty-guided-subitem--active lofty-guided-subitem--topmost" : ""}`.trim()}
       >
-        {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
-        <span {...attrs.dropdown} className="crm-only-header-menu__title">
-          {item.label}
-        </span>
-      </MenuItemAction>
+        <MenuItemAction
+          {...attrs.dropdown}
+          className={`crm-only-header-menu__item crm-only-header-menu__subitem ${isActive ? "is-active" : ""} ${isGuided ? "crm-only-header-menu__subitem--guided" : ""}`.trim()}
+          href={item.href && item.href !== "/" ? item.href : undefined}
+          needicon=""
+          onAction={itemAction}
+        >
+          {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
+          <span {...attrs.dropdown} className="crm-only-header-menu__title">
+            {item.label}
+          </span>
+        </MenuItemAction>
+        {isGuided && submenuGuide ? (
+          <div className="lofty-menu-guide lofty-menu-guide--guided">
+            <img src={submenuGuide.imageSrc} alt="" aria-hidden="true" />
+            <div className="mascot-callout__bubble">{submenuGuide.text}</div>
+          </div>
+        ) : null}
+      </div>
     );
   }
 
@@ -259,9 +299,13 @@ function MenuSubitem({
             <MenuSubitem
               key={subitem.label}
               activeView={activeView}
+              isGuidedMenuActive={isGuidedMenuActive}
+              guidedSubmenuParentLabel={guidedSubmenuParentLabel}
+              highlightedSubmenuLabel={highlightedSubmenuLabel}
               item={subitem}
               onNavigateHome={onNavigateHome}
               onNavigate={onNavigate}
+              submenuGuide={submenuGuide}
             />
           ))}
         </div>
@@ -280,23 +324,32 @@ function isNavItemActive(item: LaunchedNavItem, activeView: LaunchedShellView): 
 
 function HeaderMenuCell({
   activeView,
+  isGuidedMenuActive,
+  guidedSubmenuParentLabel,
+  highlightedSubmenuLabel,
   index,
   item,
   onNavigateHome,
   openMenu,
   setOpenMenu,
-  onNavigate
+  onNavigate,
+  submenuGuide
 }: {
   activeView: LaunchedShellView;
+  isGuidedMenuActive?: boolean;
+  guidedSubmenuParentLabel?: string | null;
+  highlightedSubmenuLabel?: string | null;
   index: number;
   item: LaunchedNavItem;
   onNavigateHome: () => void;
   openMenu: string | null;
   setOpenMenu: React.Dispatch<React.SetStateAction<string | null>>;
   onNavigate: (view: LaunchedShellView) => void;
+  submenuGuide?: SubmenuGuide | null;
 }) {
   const isOpen = openMenu === item.label;
   const isActive = isNavItemActive(item, activeView);
+  const isGuidedParent = Boolean(isGuidedMenuActive && guidedSubmenuParentLabel === item.label);
   const closeTimerRef = useRef<number | null>(null);
 
   function clearCloseTimer() {
@@ -329,11 +382,16 @@ function HeaderMenuCell({
 
   if (submenuItems.length === 0) {
     return (
-      <div {...attrs.overflow} id={`com-overflow-display-cell-${index}`} data-index={index} className="display-cell">
+      <div
+        {...attrs.overflow}
+        id={`com-overflow-display-cell-${index}`}
+        data-index={index}
+        className={`display-cell ${isGuidedParent ? "lofty-guided-parent" : ""}`.trim()}
+      >
         <MenuItemAction
           {...attrs.dropdown}
           {...attrs.menu}
-          className={`crm-only-header-menu__item isTop ${isActive ? "is-active " : ""}${item.isAi ? "flex lofty-ai-menu" : ""}`.trim()}
+          className={`crm-only-header-menu__item isTop ${isActive ? "is-active " : ""}${item.isAi ? "flex lofty-ai-menu" : ""} ${isGuidedParent ? "crm-only-header-menu__item--guided-parent" : ""}`.trim()}
           href={item.href && item.href !== "/" ? item.href : undefined}
           data-v-f4100c9e=""
           onAction={item.href === "/" ? onNavigateHome : undefined}
@@ -352,16 +410,23 @@ function HeaderMenuCell({
       {...attrs.overflow}
       id={`com-overflow-display-cell-${index}`}
       data-index={index}
-      className="display-cell"
+      className={`display-cell ${isGuidedParent ? "lofty-guided-parent" : ""}`.trim()}
       onMouseEnter={openMenuWithDelay}
       onMouseLeave={closeMenuWithDelay}
     >
-        <div {...attrs.dropdown} {...attrs.menu} data-v-f4100c9e="" className="com-dropdownbox menu-dropdown-header">
+        <div
+          {...attrs.dropdown}
+          {...attrs.menu}
+          data-v-f4100c9e=""
+          className={`com-dropdownbox menu-dropdown-header ${isGuidedParent ? "menu-dropdown-header--guided-parent" : ""} ${
+            isGuidedParent && isOpen ? "menu-dropdown-header--guided-open" : ""
+          }`.trim()}
+        >
           <div className="com-dropdown-mask" style={dropdownMaskStyle()}></div>
           <div className="com-dropdown-body">
             <MenuItemAction
               {...attrs.dropdown}
-              className={`crm-only-header-menu__item isTop ${isActive ? "is-active " : ""}${item.href ? "hoverCursor" : "cursor-default"}`.trim()}
+              className={`crm-only-header-menu__item isTop ${isActive ? "is-active " : ""}${item.href ? "hoverCursor" : "cursor-default"} ${isGuidedParent ? "crm-only-header-menu__item--guided-parent" : ""}`.trim()}
               href={item.href && item.href !== "/" ? item.href : undefined}
               onAction={item.href === "/" ? onNavigateHome : undefined}
             >
@@ -371,19 +436,29 @@ function HeaderMenuCell({
           </MenuItemAction>
         </div>
         <div
-          className="com-dropdown"
+          className={`com-dropdown ${isGuidedParent ? "com-dropdown--guided-parent" : ""} ${
+            isGuidedParent && isOpen ? "com-dropdown--guided-open" : ""
+          }`.trim()}
           style={{ display: isOpen ? "block" : "none" }}
           onMouseEnter={openMenuWithDelay}
           onMouseLeave={closeMenuWithDelay}
         >
-            <div className="com-dropdown-content crm-only-header-menu__dropdown">
+            <div
+              className={`com-dropdown-content crm-only-header-menu__dropdown ${
+                isGuidedParent ? "crm-only-header-menu__dropdown--guided-parent" : ""
+              } ${isGuidedParent && isOpen ? "crm-only-header-menu__dropdown--guided-open" : ""}`.trim()}
+            >
             {submenuItems.map((subitem) => (
               <MenuSubitem
                 key={subitem.label}
                 activeView={activeView}
+                isGuidedMenuActive={isGuidedMenuActive}
+                guidedSubmenuParentLabel={isGuidedParent ? guidedSubmenuParentLabel : null}
+                highlightedSubmenuLabel={isGuidedParent ? highlightedSubmenuLabel : null}
                 item={subitem}
                 onNavigateHome={onNavigateHome}
                 onNavigate={onNavigate}
+                submenuGuide={isGuidedParent ? submenuGuide : null}
               />
             ))}
           </div>
@@ -393,31 +468,47 @@ function HeaderMenuCell({
   );
 }
 
-function UtilityPanel({ item, onClose }: { item: (typeof utilityItems)[number] | null; onClose: () => void }) {
+function UtilityPanel({
+  item,
+  onClose,
+  override
+}: {
+  item: (typeof utilityItems)[number] | null;
+  onClose: () => void;
+  override?: UtilityPanelOverride | null;
+}) {
   if (!item) {
     return null;
   }
 
+  const customContent = override?.itemId === item.id ? override : null;
+
   return (
     <aside className="frozen-utility-panel">
       <div className="frozen-utility-panel__header">
-        <div className="frozen-utility-panel__title">{item.title}</div>
+        <div className="frozen-utility-panel__title">{customContent?.title ?? item.title}</div>
         <button className="frozen-utility-panel__close" type="button" onClick={onClose}>
           ×
         </button>
       </div>
       <div className="frozen-utility-panel__body">
-        <p>{item.description}</p>
-        {item.href ? (
-          <a
-            className="frozen-utility-panel__action"
-            href={item.href}
-            rel={isExternalHref(item.href) ? "noreferrer noopener" : undefined}
-            target={isExternalHref(item.href) ? "_blank" : undefined}
-          >
-            {isExternalHref(item.href) ? "Open original page" : "Open page"}
-          </a>
-        ) : null}
+        {customContent ? (
+          customContent.content
+        ) : (
+          <>
+            <p>{item.description}</p>
+            {item.href ? (
+              <a
+                className="frozen-utility-panel__action"
+                href={item.href}
+                rel={isExternalHref(item.href) ? "noreferrer noopener" : undefined}
+                target={isExternalHref(item.href) ? "_blank" : undefined}
+              >
+                {isExternalHref(item.href) ? "Open original page" : "Open page"}
+              </a>
+            ) : null}
+          </>
+        )}
       </div>
     </aside>
   );
@@ -434,7 +525,16 @@ export default function LoftyLaunchedShell({
   onNavigateMessages,
   onNavigateNegotiation,
   onNavigatePeople,
-  onOpenProfileSwitch
+  onNavigateListings,
+  onNavigateWebsites,
+  onOpenProfileSwitch,
+  forcedOpenMenu,
+  guidedSubmenuParentLabel,
+  highlightedSubmenuLabel,
+  submenuGuide,
+  forcedUtilityId,
+  utilityPanelOverride,
+  shellGuidedOverlay
 }: {
   activeView: LaunchedShellView;
   children: ReactNode;
@@ -446,13 +546,24 @@ export default function LoftyLaunchedShell({
   onNavigateMessages: () => void;
   onNavigateNegotiation: () => void;
   onNavigatePeople: () => void;
+  onNavigateListings: () => void;
+  onNavigateWebsites: () => void;
   onOpenProfileSwitch: () => void;
+  forcedOpenMenu?: string | null;
+  guidedSubmenuParentLabel?: string | null;
+  highlightedSubmenuLabel?: string | null;
+  submenuGuide?: SubmenuGuide | null;
+  forcedUtilityId?: string;
+  utilityPanelOverride?: UtilityPanelOverride | null;
+  shellGuidedOverlay?: ShellGuidedOverlay | null;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [activeUtilityId, setActiveUtilityId] = useState<string | null>(null);
+  const isGuidedMenuOverlay = shellGuidedOverlay?.mode === "menu";
+  const isGuidedMenuActive = Boolean(forcedOpenMenu && guidedSubmenuParentLabel && highlightedSubmenuLabel);
   const isUtilityExpanded = Boolean(activeUtilityId);
 
   const activeUtility = useMemo(
@@ -470,6 +581,16 @@ export default function LoftyLaunchedShell({
 
     if (view === "crm-people") {
       onNavigatePeople();
+      return;
+    }
+
+    if (view === "listings") {
+      onNavigateListings();
+      return;
+    }
+
+    if (view === "websites") {
+      onNavigateWebsites();
       return;
     }
 
@@ -544,9 +665,21 @@ export default function LoftyLaunchedShell({
     }
   }, [isUtilityExpanded]);
 
+  useEffect(() => {
+    if (forcedOpenMenu && openMenu !== forcedOpenMenu) {
+      setOpenMenu(forcedOpenMenu);
+    }
+  }, [forcedOpenMenu, openMenu]);
+
+  useEffect(() => {
+    if (forcedUtilityId && activeUtilityId !== forcedUtilityId) {
+      setActiveUtilityId(forcedUtilityId);
+    }
+  }, [activeUtilityId, forcedUtilityId]);
+
   return (
     <div ref={rootRef} className={`chime-website-container${isUtilityExpanded ? " is-utility-expanded" : ""}`}>
-      <div {...attrs.shell} id="app">
+      <div {...attrs.shell} id="app" className={isGuidedMenuOverlay ? "lofty-shell--guided-menu" : undefined}>
         <section {...attrs.shell} className="lofty-left-main-container">
           <div {...attrs.shell} className="header-section">
             <div {...attrs.headerWrap} {...attrs.shell} className="chime-website-header-container header-main with-header">
@@ -577,12 +710,16 @@ export default function LoftyLaunchedShell({
                           <HeaderMenuCell
                             key={item.label}
                             activeView={activeView}
+                            isGuidedMenuActive={isGuidedMenuActive}
+                            guidedSubmenuParentLabel={guidedSubmenuParentLabel}
+                            highlightedSubmenuLabel={highlightedSubmenuLabel}
                             index={index}
                             item={item}
                             onNavigateHome={handleNavigateHome}
                             openMenu={openMenu}
                             setOpenMenu={setOpenMenu}
                             onNavigate={handleNavigate}
+                            submenuGuide={submenuGuide}
                           />
                         ))}
                       </div>
@@ -849,9 +986,15 @@ export default function LoftyLaunchedShell({
             {...attrs.rightPanel}
             className={`right-slot-wrapper${activeUtility ? " is-open" : ""}`}
           >
-            <UtilityPanel item={activeUtility} onClose={() => setActiveUtilityId(null)} />
+            <UtilityPanel item={activeUtility} onClose={() => setActiveUtilityId(null)} override={utilityPanelOverride} />
           </div>
         </div>
+        {shellGuidedOverlay?.mode === "blocked" ? (
+          <button className="lofty-shell-guided-overlay lofty-shell-guided-overlay--blocked" type="button" onClick={shellGuidedOverlay.onClick}>
+            <div className="lofty-shell-guided-overlay__content">{shellGuidedOverlay.content}</div>
+          </button>
+        ) : null}
+        {shellGuidedOverlay?.mode === "menu" ? <div className="lofty-shell-guided-overlay lofty-shell-guided-overlay--menu" aria-hidden="true" /> : null}
       </div>
     </div>
   );

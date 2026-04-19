@@ -83,7 +83,15 @@ export interface PresetDefinition {
 export type PromptValues = Record<string, string | boolean>;
 export type PromptConfigStore = Record<string, PromptValues>;
 export type CardToggleStore = Record<string, boolean>;
-export type LaunchedShellView = "home" | "crm-people" | "messages" | "negotiation";
+export type LaunchedListingType = "mlx" | "pocket";
+export type LaunchedShellView =
+  | "home"
+  | "crm-people"
+  | "messages"
+  | "negotiation"
+  | "listings"
+  | "websites"
+  | "idx-builder";
 export type LeadTaskType = "Call" | "Text" | "Email" | "Other";
 export type AppointmentType = "Appointment" | "Showing";
 export type OpportunityType = "High Interest" | "Likely Seller" | "Back to Site";
@@ -158,6 +166,30 @@ export interface ListingInsight {
   trend?: string;
 }
 
+export interface LaunchedListing {
+  id: string;
+  type: LaunchedListingType;
+  sourceName: string;
+  agentId?: string;
+  referenceId?: string;
+  contactName?: string;
+  availability?: string;
+  headline: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  price: number;
+  bedrooms: number;
+  bathrooms: number;
+  squareFeet: number;
+  neighborhood: string;
+  trend: string;
+  imageUrl: string;
+  description: string;
+  enabled: boolean;
+}
+
 export interface HotSheetItem {
   id: string;
   label: string;
@@ -179,6 +211,7 @@ export interface OnboardingSnapshot {
   templatePreset: string | null;
   pendingPrompt: PromptTarget | null;
   launchReady: boolean;
+  launchedListings: LaunchedListing[];
 }
 
 export interface RoleDashboardPreferences {

@@ -19,6 +19,7 @@ import type {
   DashboardPerson,
   DashboardUpdate,
   HotSheetItem,
+  LaunchedListing,
   LaunchedNavItem,
   LeadAppointment,
   LeadTask,
@@ -163,8 +164,8 @@ const launchedNavSubfeatureMeta: Partial<Record<LibraryCardId, Record<string, Pa
     "brand-awareness": { icon: "icon-brag", href: "/" }
   },
   content: {
-    "my-listings": { icon: "icon-listhome_01", href: "/" },
-    websites: { icon: "icon-Website1", href: "/" },
+    "my-listings": { icon: "icon-listhome_01", label: "Listings", view: "listings" },
+    websites: { icon: "icon-Website1", view: "websites" },
     "landing-pages": { icon: "icon-site_style", href: "/" },
     "lofty-present": { icon: "icon-listhome_01", href: "/" },
     "open-house-form": { icon: "icon-letter_01", href: "/" },
@@ -534,7 +535,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
     subfeatures: [
       subfeature(
         "my-listings",
-        "My Listings",
+        "Listings",
         "Connects your personal and team listings for website and presentation display.",
         nonLenderRoles,
         nonLenderRoles,
@@ -1259,6 +1260,10 @@ export const listingInsights: ListingInsight[] = [
     trend: "Viewed by 4 warm buyers"
   }
 ];
+
+export function formatListingLocation(listing: Pick<LaunchedListing, "city" | "state" | "zip">) {
+  return `${listing.city}, ${listing.state} ${listing.zip}`;
+}
 
 export const hotSheetItems: HotSheetItem[] = [
   { id: "hs-open-house", label: "Upcoming Open House", count: 12 },
