@@ -289,7 +289,8 @@ const actionDefinitions: SmartPlanActionDefinition[] = [
         type: "textarea",
         defaultValue:
           "Hi Sarah,\n\nThanks for reaching out about 123 Main St! I just received your request. I have a few openings for tours tomorrow. Would morning or afternoon work better for you?"
-      }
+      },
+      { id: "familyCc", label: "CC all family members", type: "toggle", defaultValue: false }
     ]
   },
   {
