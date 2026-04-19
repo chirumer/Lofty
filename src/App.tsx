@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   closestCenter,
@@ -27,6 +27,7 @@ import {
   Circle,
   ExternalLink,
   HelpCircle,
+  LayoutGrid,
   Mail,
   MessageSquare,
   Layers3,
@@ -78,8 +79,10 @@ import type {
   PromptValues,
   RoleDefinition,
   RoleId,
+  SmartPlanGuidePhase,
   SubfeatureDefinition
 } from "./types";
+import AICopilotsPanel from "./components/AICopilotsPanel";
 import LoftyLaunchedShell from "./components/LoftyLaunchedShell";
 import SmartPlansWorkspace from "./components/SmartPlansWorkspace";
 import {
@@ -90,6 +93,17 @@ import {
   ProfileSwitchModal,
   useNegotiationFeatureState
 } from "./components/NegotiationFeatureViews";
+import {
+  buildIdxBuilderStarterPrompt,
+  getDefaultCopilotModelId,
+  matchesSmartPlanHelpPrompt,
+  isCopilotModelId,
+  SMART_PLAN_GUIDE_ACTION,
+  SMART_PLAN_GUIDE_RESPONSE,
+  type CopilotChatMessage,
+  type CopilotChatResponse,
+  type CopilotModelId
+} from "@/lib/ai-copilots";
 import { DEMO_LISTING_ID } from "@/lib/constants";
 import { formatCurrency } from "@/lib/utils";
 import testUser from "./config/test-user.json";
@@ -97,9 +111,12 @@ import demoMlxListings from "./config/demo-mlx-listings.json";
 import demoPocketListings from "./config/demo-pocket-listings.json";
 import dialog1Image from "../dialog1.png";
 import dialog2Image from "../dialog2.png";
-import builderMascotGuideImage from "../WhatsApp Image 2026-04-19 at 08.46.55.jpeg";
+import builderMascotGuideImage from "../builder-mascot-guide.jpeg";
 
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
+const COPILOT_STORAGE_KEY = "lofty-ai-copilots-panel-v1";
+const COPILOT_CLIENT_TIMEOUT_MS = 30000;
+const COPILOT_MIN_THINKING_MS = 6000;
 
 type MlsFeedFormValues = {
   sourceName: string;
@@ -341,7 +358,6 @@ function answerMascotQuestion(
     text: buildMascotExplanation(roleId, matchedTopic, question)
   };
 }
-
 type ContentEditorState =
   | {
       mode: "create" | "edit";
@@ -609,6 +625,47 @@ function createBuilderSnapshot(roleId: RoleId, mode: "empty" | "auto"): Onboardi
     subfeatureConfigs: mode === "auto" ? buildAutoselectedConfigStore(roleId) : buildInitialConfigStore(roleId),
     phase: "builder"
   });
+}
+
+function createCopilotMessage(
+  role: CopilotChatMessage["role"],
+  content: string,
+  action?: CopilotChatMessage["action"]
+): CopilotChatMessage {
+  return {
+    id: `copilot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    content: content.trim(),
+    createdAt: new Date().toISOString(),
+    action
+  };
+}
+
+function waitForMinimumDuration(startedAt: number, durationMs: number) {
+  const remainingMs = durationMs - (Date.now() - startedAt);
+  if (remainingMs <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, remainingMs);
+  });
+}
+
+function isCopilotChatMessage(value: unknown): value is CopilotChatMessage {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<CopilotChatMessage>;
+  return (
+    typeof candidate.id === "string" &&
+    (candidate.role === "user" || candidate.role === "assistant") &&
+    typeof candidate.content === "string" &&
+    typeof candidate.createdAt === "string" &&
+    (typeof candidate.action === "undefined" ||
+      (candidate.action.kind === "smart-plan-guide" && typeof candidate.action.label === "string"))
+  );
 }
 
 function getCardReadiness(snapshot: OnboardingSnapshot, card: LibraryCardDefinition, roleId: RoleId) {
@@ -1982,11 +2039,22 @@ function LaunchSuccessScreen({
   const [contentEditor, setContentEditor] = useState<ContentEditorState>(null);
   const [showIdxPreview, setShowIdxPreview] = useState(false);
   const [websiteGuideStep, setWebsiteGuideStep] = useState<WebsiteGuideStep>("idle");
+  const [copilotSelectedModelId, setCopilotSelectedModelId] = useState<CopilotModelId>(getDefaultCopilotModelId());
+  const [copilotMessages, setCopilotMessages] = useState<CopilotChatMessage[]>([]);
+  const [copilotDraft, setCopilotDraft] = useState("");
+  const [copilotIsSending, setCopilotIsSending] = useState(false);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [copilotHydrated, setCopilotHydrated] = useState(false);
+  const [smartPlanGuidePhase, setSmartPlanGuidePhase] = useState<SmartPlanGuidePhase>("inactive");
+  const copilotRequestIdRef = useRef(0);
   const negotiationFeature = useNegotiationFeatureState(DEMO_LISTING_ID);
 
   const people = useMemo(() => getDashboardPeopleForRole(role.id), [role.id]);
   const peopleViewItems = getPeopleViewList(peopleViewId, role.id);
   const activeDemoAccount = getProfileOption(activeDemoProfile);
+  const greetingName = testUser.name;
+  const hour = new Date().getHours();
+  const greetingLabel = hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening";
 
   const newLeads = people.filter((person) => person.isNewLead).slice(0, 3);
   const keepInTouchLeads = people.filter((person) => person.keepInTouch).slice(0, 4);
@@ -2000,6 +2068,12 @@ function LaunchSuccessScreen({
     .flatMap((person) => person.tasks.map((task) => ({ ...task, personName: person.name })))
     .filter((task) => !task.completed)
     .slice(0, 5);
+  const taskCounts = {
+    Call: tasks.filter((task) => task.type === "Call").length,
+    Text: tasks.filter((task) => task.type === "Text").length,
+    Email: tasks.filter((task) => task.type === "Email").length,
+    Other: tasks.filter((task) => task.type === "Other").length
+  };
   const appointments = people
     .flatMap((person) =>
       person.appointments.map((appointment) => ({
@@ -2031,6 +2105,9 @@ function LaunchSuccessScreen({
   const launchedSubfeatureIds = new Set(
     launchedCards.flatMap(({ enabledSubfeatures }) => enabledSubfeatures.map((subfeature) => subfeature.id))
   );
+  const enabledFeatureNames = Array.from(
+    new Set(launchedCards.flatMap(({ enabledSubfeatures }) => enabledSubfeatures.map((subfeature) => subfeature.name)))
+  );
   const launchedMlsFeeds = snapshot.launchedMlsFeeds ?? [];
   const launchedPocketListings = snapshot.launchedListings ?? [];
   const derivedMlsListings = useMemo(() => deriveListingsFromMlsFeeds(launchedMlsFeeds), [launchedMlsFeeds]);
@@ -2038,8 +2115,51 @@ function LaunchSuccessScreen({
     ...derivedMlsListings.filter((listing) => listing.enabled),
     ...launchedPocketListings.filter((listing) => listing.enabled)
   ];
+  const websiteBuildingConfig = snapshot.subfeatureConfigs["ai-copilots"]?.["website-building-agent"] ?? {};
+  const siteGoal = typeof websiteBuildingConfig.siteGoal === "string" ? websiteBuildingConfig.siteGoal : undefined;
+  const marketFocus = typeof websiteBuildingConfig.marketFocus === "string" ? websiteBuildingConfig.marketFocus : undefined;
   const canOpenListings = launchedSubfeatureIds.has("my-listings");
   const canOpenWebsites = launchedSubfeatureIds.has("websites");
+  const widgetAvailability = {
+    newLeads: launchedSubfeatureIds.has("people"),
+    opportunities:
+      launchedSubfeatureIds.has("showing") ||
+      launchedSubfeatureIds.has("offers") ||
+      launchedSubfeatureIds.has("transactions"),
+    keepInTouch: launchedSubfeatureIds.has("people") || launchedSubfeatureIds.has("segments"),
+    transactions: launchedSubfeatureIds.has("transactions"),
+    tasks: launchedSubfeatureIds.has("tasks"),
+    appointments: launchedSubfeatureIds.has("calendar") || launchedSubfeatureIds.has("showing"),
+    listings: canOpenListings,
+    hotSheets: launchedSubfeatureIds.has("websites")
+  };
+
+  const copilotContext = useMemo(
+    () => ({
+      activeView,
+      roleName: role.name,
+      enabledFeatures: enabledFeatureNames,
+      siteGoal,
+      marketFocus,
+      enabledListings:
+        activeView === "idx-builder"
+          ? enabledListings.map((listing) => ({
+              id: listing.id,
+              type: getListingTypeLabel(listing.type),
+              headline: listing.headline,
+              address: listing.address,
+              city: listing.city,
+              state: listing.state,
+              price: listing.price,
+              bedrooms: listing.bedrooms,
+              bathrooms: listing.bathrooms,
+              squareFeet: listing.squareFeet,
+              neighborhood: listing.neighborhood
+            }))
+          : undefined
+    }),
+    [activeView, enabledFeatureNames, enabledListings, marketFocus, role.name, siteGoal]
+  );
 
   useEffect(() => {
     if (activeView === "crm-people" && !launchedSubfeatureIds.has("people")) {
@@ -2064,6 +2184,52 @@ function LaunchSuccessScreen({
       setWebsiteGuideStep("idle");
     }
   }, [activeView, websiteGuideStep]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COPILOT_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as {
+        selectedModelId?: string;
+        messages?: unknown[];
+        draft?: string;
+      };
+
+      if (parsed.selectedModelId && isCopilotModelId(parsed.selectedModelId)) {
+        setCopilotSelectedModelId(parsed.selectedModelId);
+      }
+
+      if (Array.isArray(parsed.messages)) {
+        setCopilotMessages(parsed.messages.filter(isCopilotChatMessage));
+      }
+
+      if (typeof parsed.draft === "string") {
+        setCopilotDraft(parsed.draft);
+      }
+    } catch {
+      window.localStorage.removeItem(COPILOT_STORAGE_KEY);
+    } finally {
+      setCopilotHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!copilotHydrated) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      COPILOT_STORAGE_KEY,
+      JSON.stringify({
+        selectedModelId: copilotSelectedModelId,
+        messages: copilotMessages,
+        draft: copilotDraft
+      })
+    );
+  }, [copilotDraft, copilotHydrated, copilotMessages, copilotSelectedModelId]);
 
   function updateLaunchedMlsFeeds(updater: (current: LaunchedMlsFeed[]) => LaunchedMlsFeed[]) {
     onUpdateSnapshot((current) => ({
@@ -2136,6 +2302,166 @@ function LaunchSuccessScreen({
     setShowProfileSwitch(false);
   }
 
+  async function sendCopilotMessage(promptOverride?: string) {
+    const nextPrompt = (promptOverride ?? copilotDraft).trim();
+    if (!nextPrompt || copilotIsSending) {
+      return;
+    }
+
+    const requestStartedAt = Date.now();
+    const requestId = copilotRequestIdRef.current + 1;
+    copilotRequestIdRef.current = requestId;
+    const userMessage = createCopilotMessage("user", nextPrompt);
+    const nextMessages = [...copilotMessages, userMessage];
+
+    setCopilotMessages(nextMessages);
+    setCopilotError(null);
+    setCopilotIsSending(true);
+
+    if (!promptOverride) {
+      setCopilotDraft("");
+    }
+
+    if (matchesSmartPlanHelpPrompt(nextPrompt)) {
+      await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      setCopilotMessages([
+        ...nextMessages,
+        createCopilotMessage("assistant", SMART_PLAN_GUIDE_RESPONSE, SMART_PLAN_GUIDE_ACTION)
+      ]);
+      setCopilotIsSending(false);
+      return;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), COPILOT_CLIENT_TIMEOUT_MS);
+      const response = await fetch("/api/ai-copilots/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          modelId: copilotSelectedModelId,
+          messages: nextMessages,
+          context: copilotContext
+        })
+      }).finally(() => {
+        window.clearTimeout(timeoutId);
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as CopilotChatResponse;
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      if (!response.ok || !payload.message) {
+        await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+        if (requestId !== copilotRequestIdRef.current) {
+          return;
+        }
+
+        if (!promptOverride) {
+          setCopilotDraft(nextPrompt);
+        }
+        setCopilotError(payload.error ?? "AI Copilots could not respond right now. Please try again.");
+        return;
+      }
+
+      await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      setCopilotMessages([...nextMessages, payload.message]);
+    } catch (error) {
+      await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      if (!promptOverride) {
+        setCopilotDraft(nextPrompt);
+      }
+
+      if (error instanceof Error && error.name === "AbortError") {
+        setCopilotError("AI Copilots timed out waiting for the server. Please try again.");
+        return;
+      }
+
+      const fallbackMessage =
+        error instanceof Error && error.message
+          ? `AI Copilots could not reach the Lofty AI service (${error.message}).`
+          : "AI Copilots could not reach the Lofty AI service.";
+
+      setCopilotError(`${fallbackMessage} Please check the app connection and try again.`);
+    } finally {
+      if (requestId === copilotRequestIdRef.current) {
+        setCopilotIsSending(false);
+      }
+    }
+  }
+
+  function handleStartBuildingPrompt() {
+    const starterPrompt = buildIdxBuilderStarterPrompt({
+      siteGoal,
+      marketFocus,
+      listings: enabledListings.map((listing) => ({
+        id: listing.id,
+        type: getListingTypeLabel(listing.type),
+        headline: listing.headline,
+        address: listing.address,
+        city: listing.city,
+        state: listing.state,
+        price: listing.price,
+        bedrooms: listing.bedrooms,
+        bathrooms: listing.bathrooms,
+        squareFeet: listing.squareFeet,
+        neighborhood: listing.neighborhood
+      }))
+    });
+
+    void sendCopilotMessage(starterPrompt);
+  }
+
+  function handleCopilotMessageAction(actionKind: NonNullable<CopilotChatMessage["action"]>["kind"]) {
+    if (actionKind !== "smart-plan-guide") {
+      return;
+    }
+
+    if (!launchedSubfeatureIds.has("smart-plans")) {
+      setCopilotMessages((current) => [
+        ...current,
+        createCopilotMessage(
+          "assistant",
+          "Smart Plans is not available in this launched workspace yet, so I can't open the guided automation setup here."
+        )
+      ]);
+      return;
+    }
+
+    setActiveView("automation-smart-plans");
+    setSmartPlanGuidePhase((current) => (current === "inactive" || current === "completed" ? "index-create" : current));
+  }
+
+  function handleClearCopilotChat() {
+    copilotRequestIdRef.current += 1;
+    setCopilotMessages([]);
+    setCopilotDraft("");
+    setCopilotError(null);
+    setCopilotIsSending(false);
+    setSmartPlanGuidePhase("inactive");
+  }
+
   return (
     <>
       <LoftyLaunchedShell
@@ -2167,25 +2493,37 @@ function LaunchSuccessScreen({
             : null
         }
         forcedUtilityId={activeView === "idx-builder" ? "ai" : undefined}
-        utilityPanelOverride={
-          activeView === "idx-builder"
-            ? {
-                itemId: "ai",
-                title: "AI Copilots",
-                content: (
-                  <div className="idx-builder-sidebar">
-                    <span className="section-kicker">IDX Builder</span>
-                    <h3>AI Copilots are standing by</h3>
-                    <p>The builder canvas is ready. Kick off the first pass when you want the website draft generated.</p>
-                    <button className="primary-button idx-builder-sidebar__button">
-                      <WandSparkles size={16} />
-                      Start building
-                    </button>
-                  </div>
-                )
-              }
-            : null
-        }
+        utilityPanelOverride={{
+          itemId: "ai",
+          title: "AI Copilots",
+          content: (
+            <AICopilotsPanel
+              activeView={activeView}
+              draft={copilotDraft}
+              error={copilotError}
+              isSending={copilotIsSending}
+              messages={copilotMessages}
+              selectedModelId={copilotSelectedModelId}
+              enabledListingCount={enabledListings.length}
+              onDraftChange={(value) => {
+                setCopilotDraft(value);
+                if (copilotError) {
+                  setCopilotError(null);
+                }
+              }}
+              onModelChange={(modelId) => {
+                setCopilotSelectedModelId(modelId);
+                if (copilotError) {
+                  setCopilotError(null);
+                }
+              }}
+              onClearChat={handleClearCopilotChat}
+              onMessageAction={handleCopilotMessageAction}
+              onSend={() => void sendCopilotMessage()}
+              onStartBuilding={handleStartBuildingPrompt}
+            />
+          )
+        }}
         shellGuidedOverlay={
           websiteGuideStep === "blocked"
             ? {
@@ -2206,23 +2544,39 @@ function LaunchSuccessScreen({
             <div className="dashboard-page">
               <div className="dashboard-page-header">
                 <div>
-                  <h1>👋 Hi, Ryan!</h1>
+                  <h1>
+                    👋 {greetingLabel}, {greetingName}!
+                  </h1>
+                  <div className="dashboard-subtitle-row">
+                    <span>My Dashboard</span>
+                    <ChevronDown size={14} />
+                  </div>
+                </div>
+                <div className="dashboard-header-actions">
+                  <button className="dashboard-filter-chip">
+                    Today&apos;s Priorities
+                    <ChevronDown size={14} />
+                  </button>
+                  <button className="dashboard-grid-button" aria-label="Dashboard layout">
+                    <LayoutGrid size={16} />
+                  </button>
                 </div>
               </div>
 
               <DashboardHome
                 updates={dashboardUpdates}
-                people={people}
                 newLeads={newLeads}
                 keepInTouchLeads={keepInTouchLeads}
                 opportunityLeads={opportunityLeads}
                 opportunityCounts={opportunityCounts}
                 tasks={tasks}
+                taskCounts={taskCounts}
                 appointments={appointments}
                 showings={showings}
                 transactions={transactions}
                 listings={enabledListings}
                 hotSheets={hotSheetItems}
+                widgetAvailability={widgetAvailability}
               />
             </div>
           </div>
@@ -2251,7 +2605,12 @@ function LaunchSuccessScreen({
           />
         ) : activeView === "automation-smart-plans" ? (
           <div className="lofty-shell-section">
-            <SmartPlansWorkspace role={role} />
+            <SmartPlansWorkspace
+              role={role}
+              guidePhase={smartPlanGuidePhase}
+              onGuideAdvance={setSmartPlanGuidePhase}
+              onGuideExit={() => setSmartPlanGuidePhase("inactive")}
+            />
           </div>
         ) : activeView === "listings" ? (
           <ListingsWorkspace
@@ -2311,20 +2670,20 @@ function LaunchSuccessScreen({
 
 function DashboardHome({
   updates,
-  people,
   newLeads,
   keepInTouchLeads,
   opportunityLeads,
   opportunityCounts,
   tasks,
+  taskCounts,
   appointments,
   showings,
   transactions,
   listings,
-  hotSheets
+  hotSheets,
+  widgetAvailability
 }: {
   updates: typeof dashboardUpdates;
-  people: DashboardPerson[];
   newLeads: DashboardPerson[];
   keepInTouchLeads: DashboardPerson[];
   opportunityLeads: DashboardPerson[];
@@ -2334,758 +2693,281 @@ function DashboardHome({
     backToSite: number;
   };
   tasks: Array<{ id: string; type: string; title: string; timeLabel: string; personName: string }>;
+  taskCounts: Record<"Call" | "Text" | "Email" | "Other", number>;
   appointments: Array<{ id: string; title: string; timeLabel: string; personName: string; incomplete?: boolean }>;
   showings: Array<{ id: string; title: string; timeLabel: string; personName: string; incomplete?: boolean }>;
   transactions: Array<{ id: string; address: string; status: string; checklistCount: number; personName: string }>;
   listings: LaunchedListing[];
   hotSheets: typeof hotSheetItems;
+  widgetAvailability: {
+    newLeads: boolean;
+    opportunities: boolean;
+    keepInTouch: boolean;
+    transactions: boolean;
+    tasks: boolean;
+    appointments: boolean;
+    listings: boolean;
+    hotSheets: boolean;
+  };
 }) {
   const [scheduleTab, setScheduleTab] = useState<"appointments" | "showings">("appointments");
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]);
-  const [deferredTaskIds, setDeferredTaskIds] = useState<string[]>([]);
-  const [promotedSoonIds, setPromotedSoonIds] = useState<string[]>([]);
-
+  const scheduleItems = scheduleTab === "appointments" ? appointments : showings;
+  const scheduleTotal = scheduleItems.length;
+  const scheduleIncomplete = scheduleItems.filter((item) => item.incomplete).length;
   const untouchedCount = newLeads.filter((lead) => lead.untouched).length;
   const transactionNearDeadline = transactions.filter((item) => item.status === "Near Deadline").length;
   const transactionExpired = transactions.filter((item) => item.status === "Expired").length;
-  const scheduleItems = scheduleTab === "appointments" ? appointments : showings;
-  const sortedScheduleItems = [...scheduleItems].sort((left, right) => {
-    const leftTime = parseClockTime(left.timeLabel) ?? Number.MAX_SAFE_INTEGER;
-    const rightTime = parseClockTime(right.timeLabel) ?? Number.MAX_SAFE_INTEGER;
-    return leftTime - rightTime;
-  });
-  const scheduleTotal = scheduleItems.length;
-  const scheduleIncomplete = scheduleItems.filter((item) => item.incomplete).length;
-  const enabledListingsPreview = listings.slice(0, 3);
-  const hotSheetPreview = hotSheets.slice(0, 4);
 
-  const peopleByName = useMemo(() => new Map(people.map((person) => [person.name, person])), [people]);
-
-  const workflowTasks = useMemo(() => {
-    const parseTimeLabel = (label: string) => parseClockTime(label);
-
-    const formatMinutes = (minutes: number) => {
-      const normalized = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60);
-      const hour24 = Math.floor(normalized / 60);
-      const mins = normalized % 60;
-      const meridiem = hour24 >= 12 ? "PM" : "AM";
-      const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
-      return `${hour12}:${String(mins).padStart(2, "0")} ${meridiem}`;
-    };
-
-    const inferDurationMinutes = (taskType: DashboardWorkflowTask["taskType"]) => {
-      switch (taskType) {
-        case "Call":
-          return 15;
-        case "Text":
-          return 10;
-        case "Email":
-          return 20;
-        case "Appointment":
-          return 45;
-        case "Showing":
-          return 60;
-        default:
-          return 30;
-      }
-    };
-
-    const scheduledEvents: DashboardWorkflowTask[] = people
-      .flatMap((person) =>
-        person.appointments
-          .filter((appointment) => appointment.incomplete)
-          .map((appointment, index) => {
-            const startMinutes = parseTimeLabel(appointment.timeLabel) ?? 9 * 60 + index * 60;
-            const durationMinutes = inferDurationMinutes(appointment.type);
-            return {
-              id: `schedule-${appointment.id}`,
-              title: appointment.title,
-              personName: person.name,
-              timeLabel: formatMinutes(startMinutes),
-              plannedStartMinutes: startMinutes,
-              durationLabel: `${durationMinutes} min`,
-              taskType: appointment.type,
-              dueState: "today" as const,
-              dueLabel: appointment.type === "Showing" ? "Showing today" : "Meeting today",
-              priorityScore: 300 + person.score,
-              reason:
-                appointment.type === "Showing"
-                  ? "A showing is already booked, so prep and confirmation come before everything else."
-                  : "This appointment is time-bound, so it should anchor the start of the workflow.",
-              context: `${person.stage} · ${person.source} · score ${person.score}`,
-              detailSummary: `${person.communicationSummary} ${person.lastActivity ?? ""}`.trim(),
-              suggestedScript: `Hi ${person.name}, confirming we are still set for ${appointment.title.toLowerCase()} at ${appointment.timeLabel}. Let me know if anything changed before we begin.`,
-              nextStep: "Confirm the meeting, prep the context, and send anything they need before it starts.",
-              interestedListing: person.interestedListing,
-              contactLine: `${person.phone} · ${person.email}`,
-              statusTone: "watch" as const,
-              statusLabel: appointment.type,
-              metadata: [person.roles.join(" · "), person.lastReply],
-              hasMeetingPrep: Boolean(appointment.incomplete),
-              transactionStatus: person.transaction?.status ?? null,
-              appointmentLabel: `${appointment.type} · ${appointment.timeLabel}`,
-              isScheduledEvent: true
-            };
-          })
-      )
-      .sort((left, right) => {
-        const leftTime = parseTimeLabel(left.appointmentLabel?.split(" · ")[1] ?? left.timeLabel) ?? 0;
-        const rightTime = parseTimeLabel(right.appointmentLabel?.split(" · ")[1] ?? right.timeLabel) ?? 0;
-        return leftTime - rightTime;
-      });
-
-    const taskItems = tasks
-      .map((task, index) => {
-        const person = peopleByName.get(task.personName);
-        if (!person) {
-          return null;
-        }
-        const taskType = task.type as DashboardWorkflowTask["taskType"];
-
-        const activeAppointment = person.appointments.find((appointment) => appointment.incomplete);
-        const activeTransaction = person.transaction;
-        const hasHighIntent = Boolean(person.opportunities?.includes("High Interest"));
-        const hasSellerSignal = Boolean(person.opportunities?.includes("Likely Seller"));
-        const isUntouched = Boolean(person.untouched);
-        const isExpiredDeal = activeTransaction?.status === "Expired";
-        const isPrepHeavy = Boolean(activeAppointment?.incomplete);
-
-        const explicitTime = parseTimeLabel(task.timeLabel);
-        let priorityScore = person.score + Math.max(24 - index * 2, 0);
-        let dueState: "overdue" | "today" = "today";
-        let dueLabel = "Do today";
-
-        if (isUntouched) {
-          priorityScore += 28;
-          dueState = "overdue";
-          dueLabel = "First touch overdue";
-        }
-
-        if (isExpiredDeal) {
-          priorityScore += 26;
-          dueState = "overdue";
-          dueLabel = "Deal at risk";
-        } else if (activeTransaction?.status === "Near Deadline") {
-          priorityScore += 18;
-        }
-
-        if (taskType === "Call") {
-          priorityScore += 14;
-        }
-        if (hasHighIntent) {
-          priorityScore += 16;
-        }
-        if (hasSellerSignal) {
-          priorityScore += 10;
-        }
-        if (isPrepHeavy) {
-          priorityScore += 8;
-        }
-        if (task.timeLabel === "Anytime") {
-          priorityScore -= 4;
-        }
-        if (explicitTime !== null) {
-          priorityScore += 10;
-        }
-
-        const reasonParts = [
-          isUntouched ? "No follow-up has gone out yet." : person.communicationSummary,
-          hasHighIntent ? "They are actively engaging with listings." : person.lastActivity,
-          isExpiredDeal
-            ? "There is an expired transaction that needs intervention."
-            : activeTransaction?.status === "Near Deadline"
-              ? `${activeTransaction.checklistCount} checklist items are near deadline.`
-              : activeAppointment?.incomplete
-                ? `${activeAppointment.type} needs prep today.`
-                : null
-        ].filter(Boolean) as string[];
-
-        const suggestedScript =
-          taskType === "Call"
-            ? `Hi ${person.name}, this is Ryan from Lofty. I wanted to follow up on ${person.interestedListing.toLowerCase()} and help you with the next step today.`
-            : taskType === "Text"
-              ? `Hi ${person.name}, I pulled the update you asked for on ${person.interestedListing}. If you want, I can send the next best options right away.`
-              : taskType === "Email"
-                ? `Hi ${person.name}, here is a quick recap for ${person.savedSearch ?? person.interestedListing}. I included the next listings and what I recommend you look at first.`
-                : `Prepare the deliverable for ${person.name}, then send a quick confirmation so the conversation keeps moving.`;
-
-        const nextStep =
-          taskType === "Call"
-            ? "Confirm needs, book the next conversation, and log objections."
-            : taskType === "Text"
-              ? "Send the text, watch for a reply, and promote the lead if they respond."
-              : taskType === "Email"
-                ? "Send the recap and schedule a reminder if there is no reply by end of day."
-                : "Finish the packet, then trigger a follow-up touch from the same thread.";
-
-        return {
-          id: task.id,
-          title: task.title,
-          personName: person.name,
-          timeLabel: explicitTime !== null ? formatMinutes(explicitTime) : task.timeLabel,
-          plannedStartMinutes: explicitTime ?? -1,
-          durationLabel: `${inferDurationMinutes(taskType)} min`,
-          taskType,
-          dueState,
-          dueLabel,
-          priorityScore,
-          reason: reasonParts[0] ?? "This item is ready for action today.",
-          context: `${person.stage} · ${person.source} · score ${person.score}`,
-          detailSummary: reasonParts.slice(0, 2).join(" "),
-          suggestedScript,
-          nextStep,
-          interestedListing: person.interestedListing,
-          contactLine: `${person.phone} · ${person.email}`,
-          statusTone: dueState === "overdue" ? "urgent" : hasHighIntent ? "action" : "watch",
-          statusLabel: dueState === "overdue" ? "Overdue" : taskType,
-          metadata: [
-            person.roles.join(" · "),
-            person.segments?.[0] ?? person.leadType,
-            person.lastReply
-          ],
-          hasMeetingPrep: isPrepHeavy,
-          transactionStatus: activeTransaction?.status ?? null,
-          appointmentLabel: activeAppointment ? `${activeAppointment.type} · ${activeAppointment.timeLabel}` : null
-        };
-      })
-      .filter(Boolean) as DashboardWorkflowTask[];
-
-    const sortedTasks = taskItems.sort((left, right) => right.priorityScore - left.priorityScore);
-    const occupiedStarts = new Set(
-      scheduledEvents
-        .map((item) => parseTimeLabel(item.appointmentLabel?.split(" · ")[1] ?? item.timeLabel))
-        .filter((value): value is number => value !== null)
-    );
-    let fallbackMinutes = 9 * 60 + 15;
-
-    const scheduledTasks = sortedTasks.map((item) => {
-      if (parseTimeLabel(item.timeLabel) !== null) {
-        return item;
-      }
-
-      while (occupiedStarts.has(fallbackMinutes)) {
-        fallbackMinutes += 45;
-      }
-      const assignedMinutes = fallbackMinutes;
-      occupiedStarts.add(assignedMinutes);
-      fallbackMinutes += 45;
-
-      return {
-        ...item,
-        timeLabel: formatMinutes(assignedMinutes),
-        plannedStartMinutes: assignedMinutes
-      };
-    });
-
-    return [...scheduledEvents, ...scheduledTasks].sort((left, right) => {
-      if (left.plannedStartMinutes !== right.plannedStartMinutes) {
-        return left.plannedStartMinutes - right.plannedStartMinutes;
-      }
-      if (left.isScheduledEvent && !right.isScheduledEvent) return -1;
-      if (!left.isScheduledEvent && right.isScheduledEvent) return 1;
-      return right.priorityScore - left.priorityScore;
-    });
-  }, [people, peopleByName, tasks]);
-
-  const completedSet = useMemo(() => new Set(completedTaskIds), [completedTaskIds]);
-  const deferredSet = useMemo(() => new Set(deferredTaskIds), [deferredTaskIds]);
-  const promotedSet = useMemo(() => new Set(promotedSoonIds), [promotedSoonIds]);
-
-  const todayFlow = workflowTasks.filter((task) => !deferredSet.has(task.id));
-
-  const deferredTasks = workflowTasks
-    .filter((task) => deferredSet.has(task.id) && !completedSet.has(task.id))
-    .map((task) => ({
-      id: `deferred-${task.id}`,
-      sourceTaskId: task.id,
-      title: task.title,
-      subtitle: `${task.personName} · ${task.context}`,
-      dueLabel: "Deferred from today",
-      reason: "Return this to today’s flow when you have capacity.",
-      tone: "watch" as const
-    }));
-
-  const mustDoSoonBase = [
-    ...transactions
-      .filter((transaction) => transaction.status === "Near Deadline")
-      .map((transaction) => ({
-        id: `soon-transaction-${transaction.id}`,
-        title: `Review ${transaction.address}`,
-        subtitle: `${transaction.personName} · ${transaction.checklistCount} items near deadline`,
-        dueLabel: "Before next deadline",
-        reason: "Protect the deal before checklist pressure turns urgent.",
-        tone: "watch" as const
-      })),
-    ...keepInTouchLeads.map((lead) => ({
-      id: `soon-relationship-${lead.id}`,
-      title: `Follow up with ${lead.name}`,
-      subtitle: `${lead.keepInTouch === "Birthday" ? lead.birthdayLabel : lead.followUpLabel} · ${lead.roles.join(" · ")}`,
-      dueLabel: lead.keepInTouch === "Birthday" ? "This week" : "Soon",
-      reason: "Keep warm relationships moving without crowding today’s queue.",
-      tone: "neutral" as const
-    })),
-    ...opportunityLeads
-      .filter((lead) => !todayFlow.some((task) => task.personName === lead.name))
-      .map((lead) => ({
-        id: `soon-opportunity-${lead.id}`,
-        title: `Work ${lead.name}'s ${lead.opportunities?.[0]?.toLowerCase() ?? "signal"}`,
-        subtitle: `${lead.interestedListing} · score ${lead.score}`,
-        dueLabel: "Next up",
-        reason: "High-signal behavior is worth pulling into today if capacity opens up.",
-        tone: "action" as const
-      }))
-  ];
-
-  const mustDoSoon = [...mustDoSoonBase.filter((item) => !promotedSet.has(item.id)), ...deferredTasks].slice(0, 6);
-  const promotedSoonItems = mustDoSoonBase.filter((item) => promotedSet.has(item.id) && !completedSet.has(item.id));
-
-  const promotedIntoToday: DashboardWorkflowTask[] = promotedSoonItems.map((item, index) => ({
-    id: item.id,
-    title: item.title,
-    personName: item.subtitle.split(" · ")[0] ?? "Shared workflow",
-    timeLabel: item.dueLabel,
-    plannedStartMinutes: 16 * 60 + index * 30,
-    durationLabel: "20 min",
-    taskType: "Other" as const,
-    dueState: "today" as const,
-    dueLabel: "Promoted",
-    priorityScore: 999 - index,
-    reason: item.reason,
-    context: item.subtitle,
-    detailSummary: item.reason,
-    suggestedScript: `Use this promoted item to move ${item.subtitle.split(" · ")[0] ?? "the workflow"} forward while it is top of mind.`,
-    nextStep: "Handle the action, then either complete it or return it to the soon list.",
-    interestedListing: item.subtitle,
-    contactLine: "Use the linked CRM record for exact contact details.",
-    statusTone: item.tone === "action" ? "action" as const : "watch" as const,
-    statusLabel: item.dueLabel,
-    metadata: [item.reason],
-    hasMeetingPrep: false,
-    transactionStatus: null,
-    appointmentLabel: null,
-    isScheduledEvent: false
-  }));
-
-  const visibleTodayFlow = [...promotedIntoToday, ...todayFlow]
-    .sort((left, right) => {
-      const leftCompleted = completedSet.has(left.id) ? 1 : 0;
-      const rightCompleted = completedSet.has(right.id) ? 1 : 0;
-      if (leftCompleted !== rightCompleted) {
-        return leftCompleted - rightCompleted;
-      }
-      return left.plannedStartMinutes - right.plannedStartMinutes || right.priorityScore - left.priorityScore;
-    })
-    .slice(0, 8);
-  const nextBestAction = visibleTodayFlow.find((task) => !completedSet.has(task.id)) ?? null;
-
-  useEffect(() => {
-    if (!visibleTodayFlow.length) {
-      setExpandedTaskId(null);
-      return;
-    }
-    if (
-      !expandedTaskId ||
-      !visibleTodayFlow.some((task) => task.id === expandedTaskId) ||
-      completedSet.has(expandedTaskId)
-    ) {
-      setExpandedTaskId(nextBestAction?.id ?? visibleTodayFlow[0].id);
-    }
-  }, [completedSet, expandedTaskId, nextBestAction, visibleTodayFlow]);
-
-  const moveToNextTask = (taskId: string) => {
-    const currentIndex = visibleTodayFlow.findIndex((task) => task.id === taskId);
-    const nextTask =
-      visibleTodayFlow.slice(currentIndex + 1).find((task) => !completedSet.has(task.id)) ??
-      visibleTodayFlow.find((task) => !completedSet.has(task.id)) ??
-      null;
-    setExpandedTaskId(nextTask ? nextTask.id : null);
-  };
-
-  const handleCompleteTask = (taskId: string) => {
-    setCompletedTaskIds((current) => (current.includes(taskId) ? current : [...current, taskId]));
-    if (taskId.startsWith("soon-")) {
-      setPromotedSoonIds((current) => current.filter((id) => id !== taskId));
-    }
-  };
-
-  const handleDeferTask = (taskId: string) => {
-    if (taskId.startsWith("soon-")) {
-      setPromotedSoonIds((current) => current.filter((id) => id !== taskId));
-      moveToNextTask(taskId);
-      return;
-    }
-    setDeferredTaskIds((current) => (current.includes(taskId) ? current : [...current, taskId]));
-    moveToNextTask(taskId);
-  };
-
-  const handlePromoteSoon = (itemId: string) => {
-    setPromotedSoonIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
-    setExpandedTaskId(itemId);
-  };
-
-  const backgroundPanels = [
-    {
-      id: "pipeline",
-      title: "Pipeline Overview",
-      summary: "Keep the pipeline in view without stealing attention from active work.",
-      content: (
-        <div className="workflow-metric-grid">
-          <WorkflowMetric label="Hot leads" value={opportunityCounts.highInterest} tone="amber" />
-          <WorkflowMetric label="Deals at risk" value={transactionExpired} tone="red" />
-          <WorkflowMetric label="Pipeline" value={transactions.length + opportunityLeads.length} tone="blue" />
-        </div>
-      )
-    },
-    {
-      id: "inventory",
-      title: "Inventory Watch",
-      summary: "Keep listing movement accessible for conversations, not dominant.",
-      content: (
-        <div className="workflow-background-split">
-          <div className="workflow-background-stack">
-            {enabledListingsPreview.map((listing) => (
-              <div key={listing.id} className="workflow-background-row">
-                <div>
-                  <strong>{listing.address}</strong>
-                  <span>{formatListingLocation(listing)}</span>
-                </div>
-                <small>{listing.trend}</small>
-              </div>
-            ))}
-          </div>
-          <div className="workflow-background-stack">
-            {hotSheetPreview.map((sheet) => (
-              <div key={sheet.id} className="workflow-background-row workflow-background-row--compact">
-                <strong>{sheet.label}</strong>
-                <span className="listing-count-badge">+{sheet.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )
-    },
-    {
-      id: "updates",
-      title: "Updates",
-      summary: "Passive product and service notes that can wait until the core work is done.",
-      content: (
-        <div className="workflow-background-list">
+  return (
+    <div className="dashboard-grid">
+      <DashboardWidget className="dashboard-widget--updates" title="New Updates" actions={<span>Announcements</span>}>
+        <div className="update-list">
           {updates.map((update) => (
-            <div key={update.id} className="workflow-background-row">
-              <div>
+            <div key={update.id} className="update-item">
+              <div className={`update-thumb update-thumb--${update.accent}`} />
+              <div className="update-copy">
                 <strong>{update.title}</strong>
-                <span>{update.description}</span>
+                <p>{update.description}</p>
               </div>
-              <span className={`dashboard-accent-dot dashboard-accent-dot--${update.accent}`} />
             </div>
           ))}
         </div>
-      )
-    }
-  ];
+      </DashboardWidget>
 
-  return (
-    <div className="workflow-dashboard">
-      <div className="workflow-top-summary">
-        <WorkflowMetric
-          label="Overdue"
-          value={visibleTodayFlow.filter((task) => task.dueState === "overdue" && !completedSet.has(task.id)).length}
-          tone="amber"
-        />
-        <WorkflowMetric
-          label="Due today"
-          value={visibleTodayFlow.filter((task) => !completedSet.has(task.id)).length}
-          tone="blue"
-        />
-        <WorkflowMetric label="Do soon" value={mustDoSoon.length} tone="green" />
-      </div>
-
-      <div className="workflow-layout">
-        <main className="workflow-main-column">
-          <section className="workflow-primary-card workflow-next-best">
-            <div className="workflow-section-head">
-              <div>
-                <h3>Next Best Action</h3>
-                <p>One recommended move, with enough context to start immediately.</p>
-              </div>
-              {nextBestAction ? (
-                <DashboardStatusPill label={nextBestAction.statusLabel} tone={nextBestAction.statusTone} />
-              ) : null}
+      <DashboardWidget
+        title="Today's New Leads"
+        actions={
+          <div className="widget-icon-actions">
+            <HelpCircle size={15} />
+            <Settings2 size={15} />
+          </div>
+        }
+      >
+        {widgetAvailability.newLeads ? (
+          <>
+            <div className="dashboard-progress-track">
+              <div className="dashboard-progress-fill" style={{ width: `${Math.min((untouchedCount / Math.max(newLeads.length, 1)) * 100, 100)}%` }} />
             </div>
-
-            {nextBestAction ? (
-              <>
-                <div className={`workflow-next-best-body workflow-next-best-body--${nextBestAction.dueState}`}>
-                  <div className="workflow-next-best-title">
-                    <strong>{nextBestAction.title}</strong>
-                    <span>{nextBestAction.personName} · {nextBestAction.context}</span>
-                  </div>
-                  <p>{nextBestAction.reason}</p>
-                </div>
-                <div className="workflow-next-best-actions">
-                  <div className="workflow-action-buttons">
-                    <button className="workflow-primary-button" onClick={() => setExpandedTaskId(nextBestAction.id)}>
-                      Start
-                    </button>
-                    <button className="workflow-secondary-button" onClick={() => handleCompleteTask(nextBestAction.id)}>
-                      Complete
-                    </button>
-                    <button className="workflow-secondary-button" onClick={() => handleDeferTask(nextBestAction.id)}>
-                      Snooze
-                    </button>
-                    <button className="workflow-ghost-button" onClick={() => handleDeferTask(nextBestAction.id)}>
-                      Skip
-                    </button>
-                  </div>
-                  <div className="workflow-quick-channel-row">
-                    <span>{nextBestAction.timeLabel} · {nextBestAction.durationLabel} · {nextBestAction.contactLine}</span>
-                    <div className="workflow-quick-icons">
-                      <button aria-label="Call task"><Phone size={15} /></button>
-                      <button aria-label="Text task"><MessageSquare size={15} /></button>
-                      <button aria-label="Email task"><Mail size={15} /></button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <EmptyWidgetState message="There is nothing left in today’s flow right now. Promote something from Must Do Soon or check the background panels." />
-            )}
-          </section>
-
-          <section className="workflow-primary-card">
-            <div className="workflow-section-head workflow-section-head--tight">
-              <div>
-                <h3>Today&apos;s Flow</h3>
-                <p>Work top to bottom. Open one task, act, then move to the next.</p>
-              </div>
-              <div className="workflow-flow-stats">
-                <span>{visibleTodayFlow.filter((task) => !completedSet.has(task.id)).length} active</span>
-                <span>{visibleTodayFlow.filter((task) => task.isScheduledEvent && !completedSet.has(task.id)).length} appointments first</span>
-                <span>{completedTaskIds.length} done</span>
-              </div>
-            </div>
-
-            <div className="workflow-flow-list">
-              {visibleTodayFlow.length ? (
-                visibleTodayFlow.map((task, index) => (
-                  <WorkflowTaskRow
-                    key={task.id}
-                    index={index}
-                    task={task}
-                    isCompleted={completedSet.has(task.id)}
-                    isExpanded={expandedTaskId === task.id}
-                    isCurrent={task.id === nextBestAction?.id}
-                    onToggle={() => setExpandedTaskId((current) => (current === task.id ? null : task.id))}
-                    onStart={() => setExpandedTaskId(task.id)}
-                    onComplete={() => handleCompleteTask(task.id)}
-                    onDefer={() => handleDeferTask(task.id)}
-                  />
-                ))
-              ) : (
-                <div className="workflow-empty-inline">
-                  <Check size={16} />
-                  <span>You cleared today&apos;s flow. Pull in a task from Must Do Soon if you want to keep going.</span>
-                </div>
-              )}
-            </div>
-          </section>
-        </main>
-
-        <aside className="workflow-side-column">
-          <section className="workflow-secondary-card">
-            <div className="workflow-section-head workflow-section-head--tight">
-              <div>
-                <h3>{scheduleTab === "appointments" ? "Appointments" : "Showings"}</h3>
-                <p>Upcoming meetings stay nearby, ordered by the time they happen.</p>
-              </div>
-            </div>
-            <div className="workflow-background-tabs">
-              <button
-                className={scheduleTab === "appointments" ? "workflow-background-tab is-active" : "workflow-background-tab"}
-                onClick={() => setScheduleTab("appointments")}
-              >
-                Appointments
-              </button>
-              <button
-                className={scheduleTab === "showings" ? "workflow-background-tab is-active" : "workflow-background-tab"}
-                onClick={() => setScheduleTab("showings")}
-              >
-                Showings
-              </button>
-            </div>
-            <div className="workflow-background-list">
-              {sortedScheduleItems.slice(0, 4).map((item) => (
-                <div key={item.id} className="workflow-background-row">
+            <p className="widget-summary">Total: {newLeads.length} ({untouchedCount} untouched)</p>
+            <div className="widget-section-title">Leads waiting to be contacted</div>
+            <div className="lead-list">
+              {newLeads.map((lead) => (
+                <div key={lead.id} className="lead-list-item">
                   <div>
-                    <strong>{item.personName}</strong>
-                    <span>{item.title}</span>
+                    <strong>{lead.name}</strong>
+                    <span>{lead.leadType}</span>
+                    <small>{lead.source}</small>
                   </div>
-                  <div className="workflow-background-row-side">
-                    {item.incomplete ? <DashboardStatusPill label="Prep" tone="watch" /> : null}
-                    <small>{item.timeLabel}</small>
+                  <div className="lead-score-badge">{lead.score}</div>
+                </div>
+              ))}
+            </div>
+            <button className="widget-link-row">
+              View All
+              <ChevronRight size={14} />
+            </button>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build CRM > People to surface new lead triage here." />
+        )}
+      </DashboardWidget>
+
+      <DashboardWidget title="Today's Opportunities" actions={<HelpCircle size={15} />}>
+        {widgetAvailability.opportunities ? (
+          <>
+            <div className="widget-metric-row">
+              <WidgetMetric label="High Interest" value={opportunityCounts.highInterest} />
+              <WidgetMetric label="Likely Sellers" value={opportunityCounts.likelySellers} />
+              <WidgetMetric label="Back to Site" value={opportunityCounts.backToSite} />
+            </div>
+            <div className="opportunity-list">
+              {opportunityLeads.map((lead) => (
+                <div key={lead.id} className="opportunity-item">
+                  <div>
+                    <strong>{lead.name}</strong>
+                    <span>{lead.lastActivity}</span>
+                  </div>
+                  <div className="chip-wrap">
+                    {lead.opportunities?.map((tag) => (
+                      <span key={tag} className="mini-chip mini-chip--success">
+                        {tag}
+                      </span>
+                    ))}
                   </div>
                 </div>
               ))}
             </div>
-          </section>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build Sales subfeatures to surface high-intent opportunities here." />
+        )}
+      </DashboardWidget>
 
-          <section className="workflow-secondary-card">
-            <div className="workflow-section-head workflow-section-head--tight">
-              <div>
-                <h3>Must Do Soon</h3>
-                <p>Important work that should stay nearby, but not on top of today’s queue.</p>
-              </div>
+      <DashboardWidget title="Need Keep In Touch" actions={<HelpCircle size={15} />}>
+        {widgetAvailability.keepInTouch ? (
+          <>
+            <div className="widget-metric-row">
+              <WidgetMetric label="Birthday" value={keepInTouchLeads.filter((lead) => lead.keepInTouch === "Birthday").length} />
+              <WidgetMetric label="Follow-Up" value={keepInTouchLeads.filter((lead) => lead.keepInTouch === "Follow-Up").length} />
             </div>
-            <div className="workflow-soon-list">
-              {mustDoSoon.length ? (
-                mustDoSoon.map((item) => (
-                  <div key={item.id} className="workflow-soon-row">
+            <div className="compact-list">
+              {keepInTouchLeads.map((lead) => (
+                <div key={lead.id} className="compact-list-item">
+                  <div>
+                    <strong>{lead.name}</strong>
+                    <span>{lead.roles.join(" · ")}</span>
+                    <small>{lead.birthdayLabel ?? lead.followUpLabel}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build CRM relationship features to see follow-up reminders here." />
+        )}
+      </DashboardWidget>
+
+      <DashboardWidget
+        title="Transactions"
+        actions={
+          <div className="widget-icon-actions">
+            <HelpCircle size={15} />
+            <Settings2 size={15} />
+          </div>
+        }
+      >
+        {widgetAvailability.transactions ? (
+          <>
+            <div className="widget-metric-row">
+              <WidgetMetric label="Near Deadline" value={transactionNearDeadline} />
+              <WidgetMetric label="Expired" value={transactionExpired} />
+            </div>
+            <div className="compact-list">
+              {transactions.map((transaction) => (
+                <div key={transaction.id} className="compact-list-item">
+                  <div>
+                    <strong>{transaction.address}</strong>
+                    <span>{transaction.personName}</span>
+                    <small>{transaction.checklistCount} tasks near deadline</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build Sales > Transactions to monitor active deals here." />
+        )}
+      </DashboardWidget>
+
+      <DashboardWidget title="Today's Tasks" actions={<HelpCircle size={15} />}>
+        {widgetAvailability.tasks ? (
+          <>
+            <div className="task-chip-row">
+              <TaskPill label="Call" value={taskCounts.Call} tint="blue" />
+              <TaskPill label="Text" value={taskCounts.Text} tint="blue-light" />
+              <TaskPill label="Email" value={taskCounts.Email} tint="green" />
+              <TaskPill label="Other" value={taskCounts.Other} tint="orange" />
+            </div>
+            <div className="compact-list">
+              {tasks.map((task) => (
+                <div key={task.id} className="task-list-item">
+                  <div className="task-list-main">
+                    <span className="task-list-icon">{task.type === "Call" ? <Phone size={14} /> : task.type === "Text" ? <MessageSquare size={14} /> : task.type === "Email" ? <Mail size={14} /> : <Circle size={6} fill="currentColor" strokeWidth={0} />}</span>
                     <div>
-                      <strong>{item.title}</strong>
-                      <span>{item.subtitle}</span>
-                      <small>{item.reason}</small>
-                    </div>
-                    <div className="workflow-soon-actions">
-                      <small>{item.dueLabel}</small>
-                      {!item.id.startsWith("deferred-") ? (
-                        <button className="workflow-promote-button" onClick={() => handlePromoteSoon(item.id)}>
-                          Promote
-                        </button>
-                      ) : null}
+                      <strong>{task.title}</strong>
+                      <span>{task.personName}</span>
                     </div>
                   </div>
-                ))
-              ) : (
-                <EmptyWidgetState message="Nothing is waiting in the soon lane right now." />
-              )}
-            </div>
-          </section>
-
-          {backgroundPanels.map((panel, index) => (
-            <details key={panel.id} className="workflow-secondary-card workflow-background-panel" open={index < 2}>
-              <summary className="workflow-background-summary">
-                <div>
-                  <strong>{panel.title}</strong>
-                  <span>{panel.summary}</span>
+                  <small>{task.timeLabel}</small>
                 </div>
-                <ChevronDown size={16} />
-              </summary>
-              <div className="workflow-background-content">{panel.content}</div>
-            </details>
-          ))}
-        </aside>
-      </div>
-    </div>
-  );
-}
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build CRM > Tasks to see your daily action list here." />
+        )}
+      </DashboardWidget>
 
-function WorkflowTaskRow({
-  task,
-  isCompleted,
-  index,
-  isExpanded,
-  isCurrent,
-  onToggle,
-  onStart,
-  onComplete,
-  onDefer
-}: {
-  task: DashboardWorkflowTask;
-  isCompleted: boolean;
-  index: number;
-  isExpanded: boolean;
-  isCurrent: boolean;
-  onToggle: () => void;
-  onStart: () => void;
-  onComplete: () => void;
-  onDefer: () => void;
-}) {
-  return (
-    <article className={`workflow-task ${isExpanded ? "is-expanded" : ""} ${isCurrent ? "is-current" : ""} ${task.dueState === "overdue" ? "is-urgent" : ""} ${isCompleted ? "is-complete" : ""}`.trim()}>
-      <button className="workflow-task-summary" onClick={onToggle}>
-        <div className="workflow-task-order">{index + 1}</div>
-        <div className="workflow-task-main">
-          <div className="workflow-task-line">
-            <strong>{task.title}</strong>
-            {isCompleted ? <DashboardStatusPill label="Completed" tone="success" /> : <DashboardStatusPill label={task.statusLabel} tone={task.statusTone} />}
+      <DashboardWidget
+        title="Appointments"
+        actions={
+          <div className="widget-tab-switch">
+            <button
+              className={scheduleTab === "appointments" ? "widget-tab-switch-button widget-tab-switch-button--active" : "widget-tab-switch-button"}
+              onClick={() => setScheduleTab("appointments")}
+            >
+              Appointments
+            </button>
+            <button
+              className={scheduleTab === "showings" ? "widget-tab-switch-button widget-tab-switch-button--active" : "widget-tab-switch-button"}
+              onClick={() => setScheduleTab("showings")}
+            >
+              Showings
+            </button>
           </div>
-          <span>{task.personName} · {task.context}</span>
-          <div className="workflow-task-meta">
-            <small>{task.dueLabel}</small>
-            <small>{task.timeLabel}</small>
-            <small>{task.durationLabel}</small>
-            {task.appointmentLabel ? <small>{task.appointmentLabel}</small> : null}
-          </div>
-        </div>
-        <div className="workflow-task-side">
-          <small>{isCompleted ? "Done" : task.dueState === "overdue" ? "Do now" : "Up next"}</small>
-          <ChevronDown size={16} className={isExpanded ? "is-open" : ""} />
-        </div>
-      </button>
+        }
+      >
+        {widgetAvailability.appointments ? (
+          <>
+            <div className="dashboard-progress-track">
+              <div className="dashboard-progress-fill dashboard-progress-fill--green" style={{ width: `${Math.min((scheduleIncomplete / Math.max(scheduleTotal, 1)) * 100, 100)}%` }} />
+            </div>
+            <p className="widget-summary">
+              Total: {scheduleTotal} ({scheduleIncomplete} incomplete)
+            </p>
+            <div className="compact-list">
+              {scheduleItems.map((item) => (
+                <div key={item.id} className="compact-list-item">
+                  <div>
+                    <strong>{item.personName}</strong>
+                    <span>{item.timeLabel}</span>
+                    <small>{item.title}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyWidgetState message="Build Calendar or Showing tools to see meetings here." />
+        )}
+      </DashboardWidget>
 
-      {isExpanded && !isCompleted ? (
-        <div className="workflow-task-detail">
-          <div className="workflow-task-detail-grid">
-            <div className="workflow-task-detail-block">
-              <span className="workflow-detail-label">Context</span>
-              <p>{task.detailSummary}</p>
-              <div className="workflow-chip-row">
-                <span>{task.interestedListing}</span>
-                <span>{task.contactLine}</span>
-                {task.transactionStatus ? <span>{task.transactionStatus}</span> : null}
+      <DashboardWidget title="Listings">
+        {widgetAvailability.listings ? (
+          listings.length ? (
+            <div className="compact-list">
+              {listings.map((listing) => (
+                <div key={listing.id} className="compact-list-item">
+                  <div>
+                    <strong>{listing.address}</strong>
+                    <span>{formatListingLocation(listing)}</span>
+                    <small>{listing.trend}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyWidgetState message="No enabled listings yet. Open Content > Listings to configure MLS feeds or pocket listings for your website." />
+          )
+        ) : (
+          <EmptyWidgetState message="Build Content > Listings to bring property activity into the dashboard." />
+        )}
+      </DashboardWidget>
+
+      <DashboardWidget title="Hot Sheets">
+        {widgetAvailability.hotSheets ? (
+          <div className="compact-list">
+            {hotSheets.map((sheet) => (
+              <div key={sheet.id} className="compact-list-item compact-list-item--split">
+                <strong>{sheet.label}</strong>
+                <span className="listing-count-badge">+{sheet.count} Listings</span>
               </div>
-            </div>
-            <div className="workflow-task-detail-block">
-              <span className="workflow-detail-label">Suggested script</span>
-              <p>{task.suggestedScript}</p>
-              <small>{task.nextStep}</small>
-            </div>
+            ))}
           </div>
-
-          <div className="workflow-task-actionbar">
-            <div className="workflow-inline-actions">
-              <button className="workflow-inline-button" onClick={onStart}>
-                {task.taskType === "Call" ? <Phone size={15} /> : task.taskType === "Text" ? <MessageSquare size={15} /> : task.taskType === "Email" ? <Mail size={15} /> : <ArrowRight size={15} />}
-                {task.taskType}
-              </button>
-              <button className="workflow-inline-button" onClick={onStart}>
-                <MessageSquare size={15} />
-                Note
-              </button>
-              <button className="workflow-inline-button" onClick={onStart}>
-                <Mail size={15} />
-                Follow-up
-              </button>
-            </div>
-            <div className="workflow-inline-actions">
-              <button className="workflow-secondary-button" onClick={onDefer}>
-                Snooze
-              </button>
-              <button className="workflow-primary-button" onClick={onComplete}>
-                Mark Complete
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
-function WorkflowMetric({
-  label,
-  value,
-  tone
-}: {
-  label: string;
-  value: number;
-  tone: "amber" | "red" | "blue" | "green";
-}) {
-  return (
-    <div className={`workflow-metric workflow-metric--${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
+        ) : (
+          <EmptyWidgetState message="Build Content > Websites to surface listing watchlists here." />
+        )}
+      </DashboardWidget>
     </div>
   );
 }
@@ -3917,13 +3799,11 @@ function SubfeatureWorkspace({
 
 function DashboardWidget({
   title,
-  summary,
   actions,
   children,
   className = ""
 }: {
   title: string;
-  summary?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -3931,69 +3811,12 @@ function DashboardWidget({
   return (
     <article className={`dashboard-widget ${className}`.trim()}>
       <div className="dashboard-widget-header">
-        <div className="dashboard-widget-title-group">
-          <h2>{title}</h2>
-          {summary ? <p>{summary}</p> : null}
-        </div>
+        <h2>{title}</h2>
         {actions ? <div className="dashboard-widget-actions">{actions}</div> : null}
       </div>
       {children}
     </article>
   );
-}
-
-function DashboardStatTile({
-  label,
-  value,
-  tone
-}: {
-  label: string;
-  value: number;
-  tone: "urgent" | "action" | "watch";
-}) {
-  return (
-    <div className={`dashboard-stat-tile dashboard-stat-tile--${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function DashboardPriorityRow({
-  label,
-  title,
-  meta,
-  action,
-  tone
-}: {
-  label: string;
-  title: string;
-  meta: string;
-  action: string;
-  tone: "urgent" | "action" | "watch";
-}) {
-  return (
-    <div className={`dashboard-priority-row dashboard-priority-row--${tone}`}>
-      <div className="dashboard-priority-main">
-        <DashboardStatusPill label={label} tone={tone} />
-        <div>
-          <strong>{title}</strong>
-          <span>{meta}</span>
-        </div>
-      </div>
-      <small>{action}</small>
-    </div>
-  );
-}
-
-function DashboardStatusPill({
-  label,
-  tone
-}: {
-  label: string;
-  tone: "urgent" | "action" | "watch" | "success" | "neutral";
-}) {
-  return <span className={`dashboard-status-pill dashboard-status-pill--${tone}`}>{label}</span>;
 }
 
 function WidgetMetric({ label, value }: { label: string; value: number }) {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import {
   ArrowLeft,
   Bell,
@@ -28,7 +28,9 @@ import {
   Workflow,
   X
 } from "lucide-react";
-import type { RoleDefinition } from "../types";
+import type { RoleDefinition, SmartPlanGuidePhase } from "../types";
+import dialog1Image from "../../dialog1.png";
+import dialog2Image from "../../dialog2.png";
 
 type SmartPlanIndexTab = "plans" | "library";
 type SmartPlanSurface = "index" | "builder";
@@ -171,6 +173,13 @@ type DrawerState =
       draft: Record<string, string | boolean>;
       editingStepId: string | null;
     };
+
+type SmartPlansWorkspaceProps = {
+  role: RoleDefinition;
+  guidePhase?: SmartPlanGuidePhase;
+  onGuideAdvance?: (phase: SmartPlanGuidePhase) => void;
+  onGuideExit?: () => void;
+};
 
 const leadTypes = ["Buyer", "Seller", "Renter", "Investor", "Other"];
 const populateVariableSources: SmartPlanVariableSource[] = ["Calendar"];
@@ -793,6 +802,55 @@ const initialPlans: SmartPlanRow[] = [
   }
 ];
 
+function isGuideActive(guidePhase: SmartPlanGuidePhase) {
+  return guidePhase !== "inactive";
+}
+
+function isGuideComplete(guidePhase: SmartPlanGuidePhase) {
+  return guidePhase === "completed";
+}
+
+function isGuideTriggerConfigured(trigger: SmartPlanTrigger) {
+  return (
+    trigger.definitionId === "lead-created" &&
+    trigger.criteria.some(
+      (criterion) =>
+        criterion.field === "Source" &&
+        criterion.logic === "is" &&
+        criterion.values.some((value) => value === "Website")
+    )
+  );
+}
+
+function isGuidePopulateVariableConfigured(config: Record<string, string | boolean>) {
+  return (
+    String(config.source ?? "") === "Calendar" &&
+    String(config.calendarSelection ?? "") === "nextDayAvailability" &&
+    String(config.formatType ?? "") === "comma separated time slots"
+  );
+}
+
+function isGuideAutoEmailConfigured(config: Record<string, string | boolean>) {
+  return String(config.body ?? "").includes("#availability#");
+}
+
+function SmartPlansGuideCallout({
+  imageSrc,
+  content,
+  className = ""
+}: {
+  imageSrc: string;
+  content: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`mascot-callout smartplans-guide-callout ${className}`.trim()}>
+      <img src={imageSrc} alt="" aria-hidden="true" />
+      <div className="mascot-callout__bubble">{content}</div>
+    </div>
+  );
+}
+
 function getInsertTargetFieldId(definition: SmartPlanActionDefinition) {
   if (definition.id === "auto-email") {
     return "body";
@@ -892,7 +950,320 @@ function SmartPlansSection({
   );
 }
 
-export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) {
+function SmartPlansSettingsPanel({
+  builder,
+  onClose,
+  scopeOptions,
+  setBuilder
+}: {
+  builder: SmartPlanDraft;
+  onClose: () => void;
+  scopeOptions: SmartPlanScope[];
+  setBuilder: Dispatch<SetStateAction<SmartPlanDraft | null>>;
+}) {
+  return (
+    <div className="smartplans-settings-popover-card">
+      <div className="smartplans-settings-header">
+        <h2>Settings</h2>
+        <button className="smartplans-ghost-icon" type="button" onClick={onClose} aria-label="Close settings">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="smartplans-setting-block smartplans-setting-block--expanded">
+        <div className="smartplans-setting-title-row">
+          <span>Plan Name</span>
+          <Settings2 size={18} />
+        </div>
+        <div className="smartplans-setting-content">
+          <input
+            value={builder.name}
+            onChange={(event) => setBuilder({ ...builder, name: event.target.value })}
+            placeholder="Plan name"
+          />
+        </div>
+      </div>
+
+      <div className="smartplans-setting-block smartplans-setting-block--expanded">
+        <button className="smartplans-setting-toggle" type="button">
+          <span>Plan Scope Setting</span>
+          <ChevronDown size={18} />
+        </button>
+        <div className="smartplans-setting-content">
+          <select
+            value={builder.scope}
+            onChange={(event) => setBuilder({ ...builder, scope: event.target.value as SmartPlanScope })}
+          >
+            {scopeOptions.map((scope) => (
+              <option key={scope} value={scope}>
+                {scope}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="smartplans-setting-block smartplans-setting-block--expanded">
+        <button className="smartplans-setting-toggle" type="button">
+          <span>Target Lead Type Setting</span>
+          <ChevronDown size={18} />
+        </button>
+        <div className="smartplans-setting-content">
+          <select
+            value={builder.targetLeadTypeMode}
+            onChange={(event) => setBuilder({ ...builder, targetLeadTypeMode: event.target.value as LeadTypeMode })}
+          >
+            {(["Equals To", "Include All", "Include One Of"] as LeadTypeMode[]).map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          <select
+            value={builder.targetLeadTypes[0] ?? ""}
+            onChange={(event) =>
+              setBuilder({
+                ...builder,
+                targetLeadTypes: event.target.value ? [event.target.value] : []
+              })
+            }
+          >
+            <option value="">Select Something...</option>
+            {leadTypes.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          <button
+            className="smartplans-link-button"
+            type="button"
+            onClick={() =>
+              setBuilder((current) => {
+                if (!current) {
+                  return current;
+                }
+                const next = leadTypes.find((type) => !current.targetLeadTypes.includes(type));
+                if (!next) {
+                  return current;
+                }
+                return { ...current, targetLeadTypes: [...current.targetLeadTypes, next] };
+              })
+            }
+          >
+            <Plus size={16} />
+            Add Lead Type
+          </button>
+        </div>
+      </div>
+
+      <div className="smartplans-setting-block smartplans-setting-block--expanded">
+        <button className="smartplans-setting-toggle" type="button">
+          <span>Auto Apply Setting</span>
+          <ChevronDown size={18} />
+        </button>
+        <div className="smartplans-setting-content smartplans-setting-content--compact">
+          <label className="smartplans-inline-check">
+            <input
+              checked={builder.autoApply}
+              type="checkbox"
+              onChange={(event) => setBuilder({ ...builder, autoApply: event.target.checked })}
+            />
+            <span>Auto Apply</span>
+          </label>
+          <label className="smartplans-inline-check">
+            <input
+              checked={builder.autoReapply}
+              type="checkbox"
+              onChange={(event) => setBuilder({ ...builder, autoReapply: event.target.checked })}
+            />
+            <span>Auto Re-apply</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="smartplans-setting-block">
+        <button className="smartplans-setting-toggle" type="button">
+          <span>Auto Pause Setting</span>
+          <ChevronDown size={18} />
+        </button>
+        <div className="smartplans-setting-content smartplans-setting-content--compact">
+          {autoPauseOptions.map((option) => (
+            <label key={option} className="smartplans-inline-check">
+              <input
+                checked={builder.autoPause.includes(option)}
+                type="checkbox"
+                onChange={(event) =>
+                  setBuilder((current) => {
+                    if (!current) {
+                      return current;
+                    }
+                    return {
+                      ...current,
+                      autoPause: event.target.checked
+                        ? [...current.autoPause, option]
+                        : current.autoPause.filter((item) => item !== option)
+                    };
+                  })
+                }
+              />
+              <span>{option}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SmartPlansStepChooser({
+  choices,
+  className = "",
+  dragResetKey,
+  onClose
+}: {
+  choices: Array<{
+    className?: string;
+    disabled?: boolean;
+    icon: ReactNode;
+    label: string;
+    onClick?: () => void;
+  }>;
+  className?: string;
+  dragResetKey: string;
+  onClose: () => void;
+}) {
+  const chooserRef = useRef<HTMLDivElement | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStateRef = useRef<{
+    maxDeltaX: number;
+    maxDeltaY: number;
+    minDeltaX: number;
+    minDeltaY: number;
+    originX: number;
+    originY: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    setDragOffset({ x: 0, y: 0 });
+    setIsDragging(false);
+    dragStateRef.current = null;
+  }, [dragResetKey]);
+
+  useEffect(() => {
+    if (!isDragging) {
+      return;
+    }
+
+    function clamp(value: number, min: number, max: number) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      const dragState = dragStateRef.current;
+      if (!dragState) {
+        return;
+      }
+
+      const nextDeltaX = clamp(event.clientX - dragState.startX, dragState.minDeltaX, dragState.maxDeltaX);
+      const nextDeltaY = clamp(event.clientY - dragState.startY, dragState.minDeltaY, dragState.maxDeltaY);
+
+      setDragOffset({
+        x: dragState.originX + nextDeltaX,
+        y: dragState.originY + nextDeltaY
+      });
+    }
+
+    function handlePointerUp() {
+      dragStateRef.current = null;
+      setIsDragging(false);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointercancel", handlePointerUp);
+    window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [isDragging]);
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("button")) {
+      return;
+    }
+
+    const chooserElement = chooserRef.current;
+    const boundsElement = chooserElement?.closest(".smartplans-canvas-area");
+    if (!(chooserElement instanceof HTMLDivElement) || !(boundsElement instanceof HTMLDivElement)) {
+      return;
+    }
+
+    const chooserRect = chooserElement.getBoundingClientRect();
+    const boundsRect = boundsElement.getBoundingClientRect();
+    const minDeltaX = boundsRect.left - chooserRect.left;
+    const maxDeltaX = boundsRect.right - chooserRect.right;
+    const minDeltaY = boundsRect.top - chooserRect.top;
+    const maxDeltaY = boundsRect.bottom - chooserRect.bottom;
+
+    dragStateRef.current = {
+      maxDeltaX,
+      maxDeltaY,
+      minDeltaX,
+      minDeltaY,
+      originX: dragOffset.x,
+      originY: dragOffset.y,
+      startX: event.clientX,
+      startY: event.clientY
+    };
+    setIsDragging(true);
+    event.preventDefault();
+  }
+
+  const baseTransform = className.includes("smartplans-step-chooser--initial") ? "translateX(-50%)" : "";
+  const dragTransform = dragOffset.x || dragOffset.y ? ` translate(${dragOffset.x}px, ${dragOffset.y}px)` : "";
+  const chooserTransform = `${baseTransform}${dragTransform}`.trim();
+
+  return (
+    <div
+      ref={chooserRef}
+      className={`smartplans-step-chooser ${className} ${isDragging ? "smartplans-step-chooser--dragging" : ""}`.trim()}
+      style={chooserTransform ? { transform: chooserTransform } : undefined}
+    >
+      <div className="smartplans-step-chooser-header" onPointerDown={handlePointerDown}>
+        <strong>Add a Step</strong>
+        <button className="smartplans-ghost-icon" type="button" onClick={onClose}>
+          <X size={18} />
+        </button>
+      </div>
+      <div className="smartplans-step-chooser-grid">
+        {choices.map((choice) => (
+          <button
+            key={choice.label}
+            className={`smartplans-step-choice ${choice.className ?? ""}`.trim()}
+            type="button"
+            disabled={choice.disabled}
+            onClick={choice.onClick}
+          >
+            {choice.icon}
+            {choice.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function SmartPlansWorkspace({
+  role,
+  guidePhase = "inactive",
+  onGuideAdvance
+}: SmartPlansWorkspaceProps) {
   const [surface, setSurface] = useState<SmartPlanSurface>("index");
   const [indexTab, setIndexTab] = useState<SmartPlanIndexTab>("plans");
   const [plans, setPlans] = useState<SmartPlanRow[]>(initialPlans);
@@ -904,10 +1275,20 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
   const [builder, setBuilder] = useState<SmartPlanDraft | null>(null);
   const [drawer, setDrawer] = useState<DrawerState>({ type: "none" });
   const [stepMenuTarget, setStepMenuTarget] = useState<"initial" | "after-trigger" | number | null>(null);
+  const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
   const [planSearch, setPlanSearch] = useState("");
   const [librarySearch, setLibrarySearch] = useState("");
+  const settingsPopoverAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const scopeOptions = useMemo(() => getScopeOptions(role), [role]);
+  const guideActive = isGuideActive(guidePhase);
+  const guideCompleted = isGuideComplete(guidePhase);
+  const guideLocked = guideActive && !guideCompleted;
+  const populateVariableStepIndex = useMemo(
+    () => builder?.steps.findIndex((step) => step.type === "action" && step.definitionId === "populate-variable") ?? -1,
+    [builder]
+  );
+  const guideRequiresActionChoice = guidePhase === "builder-add-populate-variable" || guidePhase === "builder-add-auto-email";
 
   const filteredPlans = useMemo(() => {
     const query = planSearch.trim().toLowerCase();
@@ -925,12 +1306,92 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
     return templateCards.filter((template) => `${template.name} ${template.leadTypeSummary}`.toLowerCase().includes(query));
   }, [librarySearch]);
 
+  useEffect(() => {
+    if (guidePhase !== "index-create") {
+      return;
+    }
+
+    setSurface("index");
+    setIndexTab("plans");
+    setCreateMenuOpen(false);
+    setScopeModalOpen(false);
+    setDrawer({ type: "none" });
+    setSettingsPopoverOpen(false);
+    setStepMenuTarget(null);
+  }, [guidePhase]);
+
+  useEffect(() => {
+    if (guidePhase !== "scope-modal") {
+      return;
+    }
+
+    setSurface("index");
+    setIndexTab("plans");
+    setCreateMenuOpen(false);
+    setScopeModalOpen(true);
+    setDrawer({ type: "none" });
+    setSettingsPopoverOpen(false);
+    setStepMenuTarget(null);
+  }, [guidePhase]);
+
+  useEffect(() => {
+    if (
+      !builder ||
+      !guideLocked ||
+      guidePhase === "index-create" ||
+      guidePhase === "scope-modal" ||
+      surface === "builder"
+    ) {
+      return;
+    }
+
+    setSurface("builder");
+    setIndexTab("plans");
+    setScopeModalOpen(false);
+  }, [builder, guideLocked, guidePhase, surface]);
+
+  useEffect(() => {
+    if (!settingsPopoverOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const anchor = settingsPopoverAnchorRef.current;
+      if (!anchor || !(event.target instanceof Node) || anchor.contains(event.target)) {
+        return;
+      }
+      setSettingsPopoverOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSettingsPopoverOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [settingsPopoverOpen]);
+
   function openCreateFlow(mode: "scratch" | "template", template?: SmartPlanTemplate) {
+    if (guidePhase === "index-create" && mode !== "scratch") {
+      return;
+    }
+
     setPendingCreateMode(mode);
     setPendingTemplate(template ?? null);
     setSelectedScope(getDefaultScope(role));
     setScopeModalOpen(true);
     setCreateMenuOpen(false);
+
+    if (guidePhase === "index-create" && mode === "scratch") {
+      onGuideAdvance?.("scope-modal");
+    }
   }
 
   function startBuilderFromScope() {
@@ -942,8 +1403,13 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
     setBuilder(draft);
     setSurface("builder");
     setScopeModalOpen(false);
+    setSettingsPopoverOpen(false);
     setDrawer({ type: "none" });
-    setStepMenuTarget(draft.trigger ? "after-trigger" : "initial");
+    setStepMenuTarget(draft.trigger ? "after-trigger" : guidePhase === "scope-modal" ? null : "initial");
+
+    if (guidePhase === "scope-modal") {
+      onGuideAdvance?.("builder-add-trigger");
+    }
   }
 
   function saveCurrentPlan() {
@@ -970,6 +1436,7 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
 
     setSurface("index");
     setIndexTab("plans");
+    setSettingsPopoverOpen(false);
     setDrawer({ type: "none" });
     setStepMenuTarget(null);
   }
@@ -996,13 +1463,41 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
         ]
       }
     });
+
+    if (guidePhase === "trigger-list" && triggerId === "lead-created") {
+      onGuideAdvance?.("trigger-detail");
+    }
   }
 
   function saveTrigger(trigger: SmartPlanTrigger) {
     if (!builder) {
       return;
     }
+
     setBuilder({ ...builder, trigger });
+
+    if (guidePhase === "trigger-detail") {
+      if (isGuideTriggerConfigured(trigger)) {
+        setDrawer({ type: "none" });
+        setStepMenuTarget(null);
+        onGuideAdvance?.("builder-add-populate-variable");
+        return;
+      }
+
+      setDrawer({
+        type: "trigger-detail",
+        draft: {
+          ...trigger,
+          criteria: trigger.criteria.map((criterion) => ({
+            ...criterion,
+            values: [...criterion.values]
+          }))
+        }
+      });
+      setStepMenuTarget(null);
+      return;
+    }
+
     setDrawer({ type: "none" });
     setStepMenuTarget("after-trigger");
   }
@@ -1025,6 +1520,14 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
   }
 
   function openActionConfig(definition: SmartPlanActionDefinition, stepId: string | null = null) {
+    if (!stepId && guidePhase === "action-list-populate-variable" && definition.id !== "populate-variable") {
+      return;
+    }
+
+    if (!stepId && guidePhase === "action-list-auto-email" && definition.id !== "auto-email") {
+      return;
+    }
+
     const existingStep =
       stepId && builder
         ? builder.steps.find((step) => step.id === stepId && step.type === "action" && step.definitionId === definition.id)
@@ -1037,6 +1540,14 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
       editingStepId: stepId,
       insertTargetFieldId: getInsertTargetFieldId(definition)
     });
+
+    if (!stepId && guidePhase === "action-list-populate-variable" && definition.id === "populate-variable") {
+      onGuideAdvance?.("action-detail-populate-variable");
+    }
+
+    if (!stepId && guidePhase === "action-list-auto-email" && definition.id === "auto-email") {
+      onGuideAdvance?.("action-detail-auto-email");
+    }
   }
 
   function openConditionConfig(definition: SmartPlanConditionDefinition, stepId: string | null = null) {
@@ -1058,6 +1569,7 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
       return;
     }
 
+    const editingStepId = drawer.type === "action-detail" ? drawer.editingStepId : null;
     const nextStep =
       drawer.type === "action-detail" && drawer.editingStepId
         ? {
@@ -1079,8 +1591,43 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
       steps: nextStructure.steps,
       variables: nextStructure.variables
     });
-    setDrawer({ type: "none" });
     setStepMenuTarget(null);
+
+    if (guidePhase === "action-detail-populate-variable" && definition.id === "populate-variable") {
+      if (isGuidePopulateVariableConfigured(config)) {
+        setDrawer({ type: "none" });
+        onGuideAdvance?.("builder-add-auto-email");
+        return;
+      }
+
+      setDrawer({
+        type: "action-detail",
+        definition,
+        draft: { ...config },
+        editingStepId: editingStepId ?? nextStep.id,
+        insertTargetFieldId: getInsertTargetFieldId(definition)
+      });
+      return;
+    }
+
+    if (guidePhase === "action-detail-auto-email" && definition.id === "auto-email") {
+      if (isGuideAutoEmailConfigured(config)) {
+        setDrawer({ type: "none" });
+        onGuideAdvance?.("completed");
+        return;
+      }
+
+      setDrawer({
+        type: "action-detail",
+        definition,
+        draft: { ...config },
+        editingStepId: editingStepId ?? nextStep.id,
+        insertTargetFieldId: getInsertTargetFieldId(definition)
+      });
+      return;
+    }
+
+    setDrawer({ type: "none" });
   }
 
   function saveCondition(definition: SmartPlanConditionDefinition, config: Record<string, string | boolean>) {
@@ -1109,9 +1656,119 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
       steps: nextStructure.steps,
       variables: nextStructure.variables
     });
-    setDrawer({ type: "none" });
     setStepMenuTarget(null);
+
+    setDrawer({ type: "none" });
   }
+
+  function openTriggerList() {
+    setStepMenuTarget(null);
+    setDrawer({ type: "trigger-list" });
+
+    if (guidePhase === "builder-add-trigger") {
+      onGuideAdvance?.("trigger-list");
+    }
+  }
+
+  function openActionList() {
+    setStepMenuTarget(null);
+    setDrawer({ type: "action-list" });
+
+    if (guidePhase === "builder-add-populate-variable") {
+      onGuideAdvance?.("action-list-populate-variable");
+      return;
+    }
+
+    if (guidePhase === "builder-add-auto-email") {
+      onGuideAdvance?.("action-list-auto-email");
+    }
+  }
+
+  function openConditionList() {
+    if (guideRequiresActionChoice) {
+      return;
+    }
+
+    setStepMenuTarget(null);
+    setDrawer({ type: "condition-list" });
+  }
+
+  function isGuideInsertTarget(target: "initial" | "after-trigger" | number | null) {
+    if (guidePhase === "builder-add-populate-variable") {
+      return target === "after-trigger";
+    }
+
+    if (guidePhase === "builder-add-auto-email") {
+      return typeof target === "number" && target === populateVariableStepIndex;
+    }
+
+    return true;
+  }
+
+  function handleStepMenuTarget(target: "initial" | "after-trigger" | number | null) {
+    if (!isGuideInsertTarget(target)) {
+      return;
+    }
+
+    setStepMenuTarget(target);
+  }
+
+  const initialStepChoices = [
+    {
+      className: [
+        "smartplans-step-choice--trigger",
+        guidePhase === "builder-add-trigger" ? "smartplans-guide-target smartplans-guide-target--active" : ""
+      ]
+        .join(" ")
+        .trim(),
+      icon: <Target size={18} />,
+      label: "Trigger",
+      onClick: openTriggerList
+    },
+    {
+      className: "smartplans-step-choice--disabled",
+      disabled: true,
+      icon: <Clock3 size={18} />,
+      label: "Condition"
+    },
+    {
+      className: "smartplans-step-choice--disabled",
+      disabled: true,
+      icon: <Workflow size={18} />,
+      label: "Action"
+    }
+  ];
+
+  const followupStepChoices = [
+    {
+      className: "smartplans-step-choice--disabled",
+      disabled: true,
+      icon: <Target size={18} />,
+      label: "Trigger"
+    },
+    {
+      className: [
+        guideRequiresActionChoice ? "smartplans-step-choice--disabled" : "smartplans-step-choice--condition"
+      ]
+        .join(" ")
+        .trim(),
+      disabled: guideRequiresActionChoice,
+      icon: <Clock3 size={18} />,
+      label: "Condition",
+      onClick: openConditionList
+    },
+    {
+      className: [
+        "smartplans-step-choice--action",
+        guideRequiresActionChoice ? "smartplans-guide-target smartplans-guide-target--active" : ""
+      ]
+        .join(" ")
+        .trim(),
+      icon: <Workflow size={18} />,
+      label: "Action",
+      onClick: openActionList
+    }
+  ];
 
   if (surface === "builder" && builder) {
     const availableDrawerVariables =
@@ -1124,195 +1781,78 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
         <header className="smartplans-builder-header">
           <button
             className="smartplans-back-button"
+            disabled={guideLocked}
             onClick={() => {
               setSurface("index");
               setDrawer({ type: "none" });
+              setSettingsPopoverOpen(false);
             }}
           >
             <ArrowLeft size={20} />
           </button>
           <h1>Create Smart Plan</h1>
-          <button className="smartplans-save-button" onClick={saveCurrentPlan}>
-            Save Smart Plan
-          </button>
+          <div className="smartplans-builder-actions">
+            {guidePhase === "completed" ? (
+              <SmartPlansGuideCallout
+                imageSrc={dialog1Image.src}
+                className="smartplans-guide-callout--completion"
+                content="Nice work. This automation is ready to save whenever you are."
+              />
+            ) : null}
+            <div className="smartplans-settings-anchor" ref={settingsPopoverAnchorRef}>
+              <button
+                className="smartplans-settings-button"
+                type="button"
+                aria-expanded={settingsPopoverOpen}
+                aria-label="Open smart plan settings"
+                onClick={() => setSettingsPopoverOpen((current) => !current)}
+              >
+                <Settings2 size={18} />
+              </button>
+              {settingsPopoverOpen ? (
+                <div className="smartplans-settings-popover" role="dialog" aria-label="Smart plan settings">
+                  <SmartPlansSettingsPanel
+                    builder={builder}
+                    onClose={() => setSettingsPopoverOpen(false)}
+                    scopeOptions={scopeOptions}
+                    setBuilder={setBuilder}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <button
+              className={`smartplans-save-button ${guidePhase === "completed" ? "smartplans-guide-target smartplans-guide-target--active" : ""}`.trim()}
+              onClick={() => {
+                saveCurrentPlan();
+                setSettingsPopoverOpen(false);
+              }}
+            >
+              Save Smart Plan
+            </button>
+          </div>
         </header>
 
         <div className="smartplans-builder-layout">
-          <aside className="smartplans-settings-card">
-            <div className="smartplans-settings-header">
-              <h2>Settings</h2>
-              <LayoutGrid size={18} />
-            </div>
-
-            <div className="smartplans-setting-block smartplans-setting-block--expanded">
-              <div className="smartplans-setting-title-row">
-                <span>Plan Name</span>
-                <Settings2 size={18} />
-              </div>
-              <div className="smartplans-setting-content">
-                <input
-                  value={builder.name}
-                  onChange={(event) => setBuilder({ ...builder, name: event.target.value })}
-                  placeholder="Plan name"
-                />
-              </div>
-            </div>
-
-            <div className="smartplans-setting-block smartplans-setting-block--expanded">
-              <button className="smartplans-setting-toggle" type="button">
-                <span>Plan Scope Setting</span>
-                <ChevronDown size={18} />
-              </button>
-              <div className="smartplans-setting-content">
-                <select
-                  value={builder.scope}
-                  onChange={(event) => setBuilder({ ...builder, scope: event.target.value as SmartPlanScope })}
-                >
-                  {scopeOptions.map((scope) => (
-                    <option key={scope} value={scope}>
-                      {scope}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="smartplans-setting-block smartplans-setting-block--expanded">
-              <button className="smartplans-setting-toggle" type="button">
-                <span>Target Lead Type Setting</span>
-                <ChevronDown size={18} />
-              </button>
-              <div className="smartplans-setting-content">
-                <select
-                  value={builder.targetLeadTypeMode}
-                  onChange={(event) => setBuilder({ ...builder, targetLeadTypeMode: event.target.value as LeadTypeMode })}
-                >
-                  {(["Equals To", "Include All", "Include One Of"] as LeadTypeMode[]).map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={builder.targetLeadTypes[0] ?? ""}
-                  onChange={(event) =>
-                    setBuilder({
-                      ...builder,
-                      targetLeadTypes: event.target.value ? [event.target.value] : []
-                    })
-                  }
-                >
-                  <option value="">Select Something...</option>
-                  {leadTypes.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  className="smartplans-link-button"
-                  type="button"
-                  onClick={() =>
-                    setBuilder((current) => {
-                      if (!current) {
-                        return current;
-                      }
-                      const next = leadTypes.find((type) => !current.targetLeadTypes.includes(type));
-                      if (!next) {
-                        return current;
-                      }
-                      return { ...current, targetLeadTypes: [...current.targetLeadTypes, next] };
-                    })
-                  }
-                >
-                  <Plus size={16} />
-                  Add Lead Type
-                </button>
-              </div>
-            </div>
-
-            <div className="smartplans-setting-block smartplans-setting-block--expanded">
-              <button className="smartplans-setting-toggle" type="button">
-                <span>Auto Apply Setting</span>
-                <ChevronDown size={18} />
-              </button>
-              <div className="smartplans-setting-content smartplans-setting-content--compact">
-                <label className="smartplans-inline-check">
-                  <input
-                    checked={builder.autoApply}
-                    type="checkbox"
-                    onChange={(event) => setBuilder({ ...builder, autoApply: event.target.checked })}
-                  />
-                  <span>Auto Apply</span>
-                </label>
-                <label className="smartplans-inline-check">
-                  <input
-                    checked={builder.autoReapply}
-                    type="checkbox"
-                    onChange={(event) => setBuilder({ ...builder, autoReapply: event.target.checked })}
-                  />
-                  <span>Auto Re-apply</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="smartplans-setting-block">
-              <button className="smartplans-setting-toggle" type="button">
-                <span>Auto Pause Setting</span>
-                <ChevronDown size={18} />
-              </button>
-              <div className="smartplans-setting-content smartplans-setting-content--compact">
-                {autoPauseOptions.map((option) => (
-                  <label key={option} className="smartplans-inline-check">
-                    <input
-                      checked={builder.autoPause.includes(option)}
-                      type="checkbox"
-                      onChange={(event) =>
-                        setBuilder((current) => {
-                          if (!current) {
-                            return current;
-                          }
-                          return {
-                            ...current,
-                            autoPause: event.target.checked
-                              ? [...current.autoPause, option]
-                              : current.autoPause.filter((item) => item !== option)
-                          };
-                        })
-                      }
-                    />
-                    <span>{option}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </aside>
-
           <div className="smartplans-canvas-area">
             <div className="smartplans-canvas">
               {!builder.trigger ? (
-                <div className="smartplans-step-chooser smartplans-step-chooser--initial">
-                  <div className="smartplans-step-chooser-header">
-                    <strong>Add a Step</strong>
-                    <button className="smartplans-ghost-icon" type="button" onClick={() => setStepMenuTarget(null)}>
-                      <X size={18} />
-                    </button>
-                  </div>
-                  <div className="smartplans-step-chooser-grid">
-                    <button className="smartplans-step-choice smartplans-step-choice--trigger" type="button" onClick={() => setDrawer({ type: "trigger-list" })}>
-                      <Target size={18} />
-                      Trigger
-                    </button>
-                    <button className="smartplans-step-choice smartplans-step-choice--disabled" type="button" disabled>
-                      <Clock3 size={18} />
-                      Condition
-                    </button>
-                    <button className="smartplans-step-choice smartplans-step-choice--disabled" type="button" disabled>
-                      <Workflow size={18} />
-                      Action
-                    </button>
-                  </div>
-                </div>
+                <>
+                  {guidePhase === "builder-add-trigger" ? (
+                    <div className="smartplans-guide-anchor smartplans-guide-anchor--centered">
+                      <SmartPlansGuideCallout
+                        imageSrc={dialog1Image.src}
+                        className="smartplans-guide-callout--builder"
+                        content="Choose Trigger to start the automation."
+                      />
+                    </div>
+                  ) : null}
+                  <SmartPlansStepChooser
+                    choices={initialStepChoices}
+                    className="smartplans-step-chooser--initial"
+                    dragResetKey="initial-step-chooser"
+                    onClose={() => setStepMenuTarget(null)}
+                  />
+                </>
               ) : (
                 <div className="smartplans-flow-column">
                   <article className="smartplans-node smartplans-node--trigger smartplans-node--interactive" onClick={openTriggerEditor}>
@@ -1337,33 +1877,30 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                   </article>
 
                   <div className="smartplans-flow-line" />
-                  <button className="smartplans-plus-node" type="button" onClick={() => setStepMenuTarget("after-trigger")}>
+                  {guidePhase === "builder-add-populate-variable" ? (
+                    <div className="smartplans-guide-anchor smartplans-guide-anchor--centered">
+                      <SmartPlansGuideCallout
+                        imageSrc={dialog1Image.src}
+                        className="smartplans-guide-callout--builder"
+                        content="Click the plus button, then choose Action."
+                      />
+                    </div>
+                  ) : null}
+                  <button
+                    className={`smartplans-plus-node ${guidePhase === "builder-add-populate-variable" ? "smartplans-guide-target smartplans-guide-target--active" : ""}`.trim()}
+                    type="button"
+                    disabled={!isGuideInsertTarget("after-trigger")}
+                    onClick={() => handleStepMenuTarget("after-trigger")}
+                  >
                     <Plus size={20} />
                   </button>
 
                   {stepMenuTarget === "after-trigger" ? (
-                    <div className="smartplans-step-chooser">
-                      <div className="smartplans-step-chooser-header">
-                        <strong>Add a Step</strong>
-                        <button className="smartplans-ghost-icon" type="button" onClick={() => setStepMenuTarget(null)}>
-                          <X size={18} />
-                        </button>
-                      </div>
-                      <div className="smartplans-step-chooser-grid">
-                        <button className="smartplans-step-choice smartplans-step-choice--disabled" type="button" disabled>
-                          <Target size={18} />
-                          Trigger
-                        </button>
-                        <button className="smartplans-step-choice smartplans-step-choice--condition" type="button" onClick={() => setDrawer({ type: "condition-list" })}>
-                          <Clock3 size={18} />
-                          Condition
-                        </button>
-                        <button className="smartplans-step-choice smartplans-step-choice--action" type="button" onClick={() => setDrawer({ type: "action-list" })}>
-                          <Workflow size={18} />
-                          Action
-                        </button>
-                      </div>
-                    </div>
+                    <SmartPlansStepChooser
+                      choices={followupStepChoices}
+                      dragResetKey="after-trigger-step-chooser"
+                      onClose={() => setStepMenuTarget(null)}
+                    />
                   ) : null}
 
                   {builder.steps.map((step, index) => (
@@ -1396,32 +1933,29 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                         </div>
                       </article>
                       <div className="smartplans-flow-line" />
-                      <button className="smartplans-plus-node" type="button" onClick={() => setStepMenuTarget(index)}>
+                      {guidePhase === "builder-add-auto-email" && index === populateVariableStepIndex ? (
+                        <div className="smartplans-guide-anchor smartplans-guide-anchor--centered">
+                          <SmartPlansGuideCallout
+                            imageSrc={dialog1Image.src}
+                            className="smartplans-guide-callout--builder"
+                            content="Add one more Action after Populate Variable, then choose Auto Email."
+                          />
+                        </div>
+                      ) : null}
+                      <button
+                        className={`smartplans-plus-node ${guidePhase === "builder-add-auto-email" && index === populateVariableStepIndex ? "smartplans-guide-target smartplans-guide-target--active" : ""}`.trim()}
+                        type="button"
+                        disabled={!isGuideInsertTarget(index)}
+                        onClick={() => handleStepMenuTarget(index)}
+                      >
                         <Plus size={20} />
                       </button>
                       {stepMenuTarget === index ? (
-                        <div className="smartplans-step-chooser">
-                          <div className="smartplans-step-chooser-header">
-                            <strong>Add a Step</strong>
-                            <button className="smartplans-ghost-icon" type="button" onClick={() => setStepMenuTarget(null)}>
-                              <X size={18} />
-                            </button>
-                          </div>
-                          <div className="smartplans-step-chooser-grid">
-                            <button className="smartplans-step-choice smartplans-step-choice--disabled" type="button" disabled>
-                              <Target size={18} />
-                              Trigger
-                            </button>
-                            <button className="smartplans-step-choice smartplans-step-choice--condition" type="button" onClick={() => setDrawer({ type: "condition-list" })}>
-                              <Clock3 size={18} />
-                              Condition
-                            </button>
-                            <button className="smartplans-step-choice smartplans-step-choice--action" type="button" onClick={() => setDrawer({ type: "action-list" })}>
-                              <Workflow size={18} />
-                              Action
-                            </button>
-                          </div>
-                        </div>
+                        <SmartPlansStepChooser
+                          choices={followupStepChoices}
+                          dragResetKey={`step-${index}-chooser`}
+                          onClose={() => setStepMenuTarget(null)}
+                        />
                       ) : null}
                     </div>
                   ))}
@@ -1455,13 +1989,32 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                     <X size={18} />
                   </button>
                 </div>
+                {guidePhase === "trigger-list" ? (
+                  <div className="smartplans-drawer-body smartplans-drawer-body--guide">
+                    <SmartPlansGuideCallout
+                      imageSrc={dialog1Image.src}
+                      className="smartplans-guide-callout--drawer"
+                      content="Choose Lead Created so this plan starts the moment a website lead appears."
+                    />
+                  </div>
+                ) : null}
                 {Array.from(new Set(triggerDefinitions.map((item) => item.category))).map((category) => (
                   <SmartPlansSection key={category} title={category} actions={<ChevronDown size={18} />}>
                     <div className="smartplans-option-list">
                       {triggerDefinitions
                         .filter((item) => item.category === category)
-                        .map((trigger) => (
-                          <button key={trigger.id} className="smartplans-option-card" type="button" onClick={() => addTriggerCriteriaRow(trigger.id)}>
+                        .map((trigger) => {
+                          const isGuideTarget = guidePhase === "trigger-list" && trigger.id === "lead-created";
+                          const isDisabled = guidePhase === "trigger-list" && trigger.id !== "lead-created";
+
+                          return (
+                            <button
+                              key={trigger.id}
+                              className={`smartplans-option-card ${isGuideTarget ? "smartplans-guide-target smartplans-guide-target--active smartplans-option-card--guided" : ""}`.trim()}
+                              type="button"
+                              disabled={isDisabled}
+                              onClick={() => addTriggerCriteriaRow(trigger.id)}
+                            >
                             <div className="smartplans-option-card-main">
                               <span className="smartplans-option-icon">
                                 <Target size={18} />
@@ -1469,8 +2022,9 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                               <strong>{trigger.label}</strong>
                             </div>
                             <small>{trigger.description}</small>
-                          </button>
-                        ))}
+                            </button>
+                          );
+                        })}
                     </div>
                   </SmartPlansSection>
                 ))}
@@ -1490,6 +2044,15 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                     <X size={18} />
                   </button>
                 </div>
+                {guidePhase === "trigger-detail" ? (
+                  <div className="smartplans-drawer-body smartplans-drawer-body--guide">
+                    <SmartPlansGuideCallout
+                      imageSrc={dialog2Image.src}
+                      className="smartplans-guide-callout--drawer"
+                      content="Set the trigger to Lead Created, then make the criteria Source is Website."
+                    />
+                  </div>
+                ) : null}
                 <SmartPlansSection
                   title="Criteria"
                   actions={
@@ -1654,19 +2217,48 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                     <X size={18} />
                   </button>
                 </div>
+                {guidePhase === "action-list-populate-variable" || guidePhase === "action-list-auto-email" ? (
+                  <div className="smartplans-drawer-body smartplans-drawer-body--guide">
+                    <SmartPlansGuideCallout
+                      imageSrc={dialog1Image.src}
+                      className="smartplans-guide-callout--drawer"
+                      content={
+                        guidePhase === "action-list-populate-variable"
+                          ? "Choose Populate Variable so we can pull your calendar availability into a token."
+                          : "Choose Auto Email so the availability token can be sent automatically."
+                      }
+                    />
+                  </div>
+                ) : null}
                 {Array.from(new Set(actionDefinitions.map((item) => item.group))).map((group) => (
                   <SmartPlansSection key={group} title={group} actions={<ChevronDown size={18} />}>
                     <div className="smartplans-option-list">
                       {actionDefinitions
                         .filter((item) => item.group === group)
-                        .map((action) => (
-                          <button key={action.id} className="smartplans-option-card" type="button" onClick={() => openActionConfig(action)}>
+                        .map((action) => {
+                          const isGuidePopulateTarget =
+                            guidePhase === "action-list-populate-variable" && action.id === "populate-variable";
+                          const isGuideAutoEmailTarget =
+                            guidePhase === "action-list-auto-email" && action.id === "auto-email";
+                          const isDisabled =
+                            (guidePhase === "action-list-populate-variable" && action.id !== "populate-variable") ||
+                            (guidePhase === "action-list-auto-email" && action.id !== "auto-email");
+
+                          return (
+                            <button
+                              key={action.id}
+                              className={`smartplans-option-card ${(isGuidePopulateTarget || isGuideAutoEmailTarget) ? "smartplans-guide-target smartplans-guide-target--active smartplans-option-card--guided" : ""}`.trim()}
+                              type="button"
+                              disabled={isDisabled}
+                              onClick={() => openActionConfig(action)}
+                            >
                             <div className="smartplans-option-card-main">
                               <span className="smartplans-option-icon smartplans-option-icon--action">{action.icon}</span>
                               <strong>{action.label}</strong>
                             </div>
-                          </button>
-                        ))}
+                            </button>
+                          );
+                        })}
                     </div>
                   </SmartPlansSection>
                 ))}
@@ -1710,6 +2302,33 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                   </button>
                 </div>
                 <div className="smartplans-drawer-body">
+                  {guidePhase === "action-detail-populate-variable" ? (
+                    <SmartPlansGuideCallout
+                      imageSrc={dialog2Image.src}
+                      className="smartplans-guide-callout--drawer"
+                      content={
+                        <div className="smartplans-guide-copy">
+                          <strong>Populate Variable</strong>
+                          <span>Set Source = Calendar</span>
+                          <span>Set Calendar Selection = nextDayAvailability</span>
+                          <span>Pick comma separated time slots for the format</span>
+                        </div>
+                      }
+                    />
+                  ) : null}
+                  {guidePhase === "action-detail-auto-email" ? (
+                    <SmartPlansGuideCallout
+                      imageSrc={dialog2Image.src}
+                      className="smartplans-guide-callout--drawer"
+                      content={
+                        <div className="smartplans-guide-copy">
+                          <strong>Auto Email</strong>
+                          <span>Put the availability token in the body.</span>
+                          <span>Example: Tomorrow I'm available at #availability#</span>
+                        </div>
+                      }
+                    />
+                  ) : null}
                   {drawer.definition.id === "populate-variable" ? (
                     <div className="smartplans-form-stack">
                       <label className="smartplans-form-field">
@@ -1957,6 +2576,7 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
           <button
             className={indexTab === "library" ? "smartplans-index-switcher-button is-active" : "smartplans-index-switcher-button"}
             type="button"
+            disabled={guideLocked}
             onClick={() => setIndexTab("library")}
           >
             Library
@@ -1964,20 +2584,40 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
         </div>
 
         <div className="smartplans-create-box">
+          {guidePhase === "index-create" ? (
+            <SmartPlansGuideCallout
+              imageSrc={dialog1Image.src}
+              className="smartplans-guide-callout--index"
+              content={
+                createMenuOpen
+                  ? "Choose From Scratch to build this Smart Plan step by step."
+                  : "Click Create Smart Plan, then choose From Scratch."
+              }
+            />
+          ) : null}
           {indexTab === "plans" ? (
             <div className="smartplans-create-menu">
-              <button className="smartplans-create-button" type="button" onClick={() => setCreateMenuOpen((open) => !open)}>
+              <button
+                className={`smartplans-create-button ${guidePhase === "index-create" ? "smartplans-guide-target smartplans-guide-target--active" : ""}`.trim()}
+                type="button"
+                onClick={() => setCreateMenuOpen((open) => !open)}
+              >
                 <Plus size={18} />
                 Create Smart Plan
                 <ChevronDown size={18} />
               </button>
               {createMenuOpen ? (
                 <div className="smartplans-create-dropdown">
-                  <button type="button" onClick={() => openCreateFlow("scratch")}>
+                  <button
+                    className={guidePhase === "index-create" ? "smartplans-guide-target smartplans-guide-target--active" : ""}
+                    type="button"
+                    onClick={() => openCreateFlow("scratch")}
+                  >
                     From Scratch
                   </button>
                   <button
                     type="button"
+                    disabled={guideLocked}
                     onClick={() => {
                       setIndexTab("library");
                       setCreateMenuOpen(false);
@@ -2155,11 +2795,23 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
       )}
 
       {scopeModalOpen ? (
-        <div className="smartplans-modal-backdrop" onClick={() => setScopeModalOpen(false)}>
+        <div
+          className="smartplans-modal-backdrop"
+          onClick={() => {
+            if (!guideLocked || guidePhase !== "scope-modal") {
+              setScopeModalOpen(false);
+            }
+          }}
+        >
           <div className="smartplans-modal" onClick={(event) => event.stopPropagation()}>
             <div className="smartplans-modal-header">
               <h2>CREATE A PLAN</h2>
-              <button className="smartplans-ghost-icon" type="button" onClick={() => setScopeModalOpen(false)}>
+              <button
+                className="smartplans-ghost-icon"
+                type="button"
+                disabled={guidePhase === "scope-modal"}
+                onClick={() => setScopeModalOpen(false)}
+              >
                 <X size={18} />
               </button>
             </div>
@@ -2175,10 +2827,26 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
               </div>
             </div>
             <div className="smartplans-modal-footer">
-              <button className="smartplans-subtle-button" type="button" onClick={() => setScopeModalOpen(false)}>
+              {guidePhase === "scope-modal" ? (
+                <SmartPlansGuideCallout
+                  imageSrc={dialog2Image.src}
+                  className="smartplans-guide-callout--modal"
+                  content="Choose the right scope for this plan, then click Create Plan."
+                />
+              ) : null}
+              <button
+                className="smartplans-subtle-button"
+                type="button"
+                disabled={guidePhase === "scope-modal"}
+                onClick={() => setScopeModalOpen(false)}
+              >
                 Cancel
               </button>
-              <button className="smartplans-save-button smartplans-save-button--inline" type="button" onClick={startBuilderFromScope}>
+              <button
+                className={`smartplans-save-button smartplans-save-button--inline ${guidePhase === "scope-modal" ? "smartplans-guide-target smartplans-guide-target--active" : ""}`.trim()}
+                type="button"
+                onClick={startBuilderFromScope}
+              >
                 Create Plan
                 <ChevronRight size={18} />
               </button>

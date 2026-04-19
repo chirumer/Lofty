@@ -324,6 +324,25 @@ img {
   margin-bottom: 24px;
 }
 
+@media (min-width: 1201px) {
+  .loft-main-router-wrapper:has(.lofty-shell-section--messages) {
+    overflow: hidden;
+  }
+
+  .lofty-shell-content:has(.lofty-shell-section--messages) {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    padding: 14px;
+  }
+
+  .lofty-shell-content:has(.lofty-shell-section--messages) > .lofty-shell-section--messages {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+}
+
 .right-slot-wrapper.is-open {
   width: 380px !important;
 }
@@ -372,7 +391,14 @@ img {
   flex: 1;
   flex-direction: column;
   gap: 14px;
+  min-height: 0;
   padding: 20px;
+}
+
+.frozen-utility-panel__body--custom {
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
 }
 
 .frozen-utility-panel__body p {
