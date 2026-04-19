@@ -5412,6 +5412,13 @@ textarea::placeholder {
   gap: 12px;
 }
 
+.builder-mascot-popover__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .builder-mascot-popover__identity {
   display: flex;
   align-items: center;

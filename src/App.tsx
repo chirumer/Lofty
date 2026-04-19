@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   closestCenter,
@@ -36,6 +36,8 @@ import {
   Rocket,
   Search,
   Settings2,
+  Volume2,
+  VolumeX,
   WandSparkles,
   X
 } from "lucide-react";
@@ -1809,6 +1811,8 @@ function BuilderMascotPopover({
   onQuickAsk: (question: string) => void;
 }) {
   const topicDetails = getMascotTopicDetails(topic);
+  const [speechEnabled, setSpeechEnabled] = useState(true);
+  const spokenMessageRef = useRef("");
   const quickQuestions = topicDetails?.subfeature
     ? [
         "What does this do?",
@@ -1818,6 +1822,38 @@ function BuilderMascotPopover({
     : topicDetails?.card
       ? ["What is this tab for?", `What should ${role.name} turn on first?`]
       : ["What should I build first?", "What can I skip for launch?"];
+  const latestAssistantMessage = useMemo(
+    () => [...messages].reverse().find((message) => message.role === "assistant")?.text ?? "",
+    [messages]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      return;
+    }
+
+    if (!speechEnabled) {
+      window.speechSynthesis.cancel();
+      return;
+    }
+
+    if (!latestAssistantMessage || spokenMessageRef.current === latestAssistantMessage) {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(latestAssistantMessage);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onstart = () => {
+      spokenMessageRef.current = latestAssistantMessage;
+    };
+    window.speechSynthesis.speak(utterance);
+
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, [latestAssistantMessage, speechEnabled]);
 
   return (
     <aside className={`builder-mascot-popover builder-mascot-popover--${variant}`} aria-label="Lofty Guide">
@@ -1835,9 +1871,24 @@ function BuilderMascotPopover({
             </strong>
           </div>
         </div>
-        <button type="button" className="icon-button" onClick={onClose} aria-label="Close Lofty Guide">
-          <X size={16} />
-        </button>
+        <div className="builder-mascot-popover__controls">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => {
+              if (speechEnabled && typeof window !== "undefined" && "speechSynthesis" in window) {
+                window.speechSynthesis.cancel();
+              }
+              setSpeechEnabled((current) => !current);
+            }}
+            aria-label={speechEnabled ? "Mute Lofty Guide voice" : "Unmute Lofty Guide voice"}
+          >
+            {speechEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close Lofty Guide">
+            <X size={16} />
+          </button>
+        </div>
       </div>
 
       {topicDetails ? (
