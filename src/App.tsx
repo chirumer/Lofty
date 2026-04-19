@@ -38,10 +38,12 @@ import {
   WandSparkles,
   X
 } from "lucide-react";
-import {
-  buildInitialCardStates,
-  buildInitialConfigStore,
-  buildInitialToggleStore,
+import { // Existing imports
+  buildInitialCardStates, buildInitialConfigStore, buildInitialToggleStore,
+  // New imports for autoselect feature
+  buildAutoselectedCardStates,
+  buildAutoselectedConfigStore,
+  buildAutoselectedToggleStore,
   buildPromptDefaults,
   dashboardUpdates,
   deriveLaunchReady,
@@ -255,9 +257,9 @@ function App() {
     updateSnapshot(() => ({
       ...emptySnapshot,
       selectedRole: role.id,
-      cardStates: buildInitialCardStates(),
-      subfeatureToggles: buildInitialToggleStore(role.id),
-      subfeatureConfigs: buildInitialConfigStore(role.id),
+      cardStates: buildAutoselectedCardStates(role.id), // Use autoselected states
+      subfeatureToggles: buildAutoselectedToggleStore(role.id), // Use autoselected toggles
+      subfeatureConfigs: buildAutoselectedConfigStore(role.id), // Use autoselected configs
       phase: "builder"
     }));
     setSelectedCardId(null);

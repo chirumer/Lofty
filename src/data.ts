@@ -883,7 +883,7 @@ export const presetDefinitions: PresetDefinition[] = [
     name: "Office Admin Setup",
     description: "Prioritizes day-to-day office operations and reporting.",
     roleIds: ["office-admin"],
-    recommendedCards: ["crm", "sales", "automation", "reporting"]
+    recommendedCards: ["crm", "sales", "content", "automation", "reporting"]
   },
   {
     id: "lender-setup",
@@ -897,14 +897,14 @@ export const presetDefinitions: PresetDefinition[] = [
     name: "Advanced Marketing Setup",
     description: "Adds the public-facing and growth tabs first.",
     roleIds: ["company-owner", "company-admin", "office-owner", "office-admin", "agent-user"],
-    recommendedCards: ["content", "marketing", "automation", "ai-copilots"]
+    recommendedCards: ["crm", "sales", "content", "marketing", "automation", "reporting", "ai-copilots"]
   },
   {
     id: "minimal-launch-setup",
     name: "Minimal Launch Setup",
     description: "Keeps launch tight with only the minimum required tabs.",
     roleIds: allRoles,
-    recommendedCards: ["crm", "sales", "content"]
+    recommendedCards: ["crm", "sales", "content", "automation", "reporting"]
   }
 ];
 
@@ -1267,6 +1267,57 @@ export function buildPromptDefaults(promptTarget: PromptTarget): Record<string, 
       return [field.id, field.placeholder ?? `${subfeature.name} setup`];
     })
   );
+}
+
+export function buildAutoselectedCardStates(roleId: RoleId): Partial<Record<LibraryCardId, CardState>> {
+  const recommendedCardIds = new Set(getRecommendedCards(roleId));
+  return Object.fromEntries(
+    libraryCardDefinitions.map((card) => [
+      card.id,
+      recommendedCardIds.has(card.id) ? "built" : "not-started"
+    ])
+  ) as Partial<Record<LibraryCardId, CardState>>;
+}
+
+export function buildAutoselectedToggleStore(roleId: RoleId): Partial<Record<LibraryCardId, CardToggleStore>> {
+  const recommendedCardIds = new Set(getRecommendedCards(roleId));
+  return Object.fromEntries(
+    libraryCardDefinitions.map((card) => {
+      const subfeatureToggles: CardToggleStore = {};
+      if (recommendedCardIds.has(card.id)) {
+        // For recommended cards, enable all allowed subfeatures
+        card.subfeatures.forEach((subfeature) => {
+          subfeatureToggles[subfeature.id] = subfeature.allowedRoles.includes(roleId);
+        });
+      } else {
+        // For non-recommended cards, use the default logic (defaultEnabled or requiredFor)
+        card.subfeatures.forEach((subfeature) => {
+          subfeatureToggles[subfeature.id] =
+            subfeature.allowedRoles.includes(roleId) && (subfeature.defaultEnabled || subfeature.requiredFor.includes(roleId));
+        });
+      }
+      return [card.id, subfeatureToggles];
+    })
+  ) as Partial<Record<LibraryCardId, CardToggleStore>>;
+}
+
+export function buildAutoselectedConfigStore(roleId: RoleId): Partial<Record<LibraryCardId, PromptConfigStore>> {
+  const recommendedCardIds = new Set(getRecommendedCards(roleId));
+  return Object.fromEntries(
+    libraryCardDefinitions.map((card) => {
+      const subfeatureConfigs: PromptConfigStore = {};
+      const subfeaturesToConfigure = recommendedCardIds.has(card.id)
+        ? card.subfeatures.filter((item) => item.allowedRoles.includes(roleId)) // All allowed subfeatures for recommended cards
+        : card.subfeatures.filter((item) => item.allowedRoles.includes(roleId) && item.requiredFor.includes(roleId)); // Only required for non-recommended
+
+      subfeaturesToConfigure.forEach((subfeature) => {
+        if (subfeature.promptFields.length > 0) {
+          subfeatureConfigs[subfeature.id] = buildPromptDefaults({ cardId: card.id, subfeatureId: subfeature.id });
+        }
+      });
+      return [card.id, subfeatureConfigs];
+    })
+  ) as Partial<Record<LibraryCardId, PromptConfigStore>>;
 }
 
 export function cardHasConfiguredRequiredSubfeatures(snapshot: OnboardingSnapshot, card: LibraryCardDefinition, roleId: RoleId) {
