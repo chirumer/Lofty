@@ -536,16 +536,16 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
       subfeature(
         "my-listings",
         "Listings",
-        "Connects your personal and team listings for website and presentation display.",
+        "Connects your MLS feed settings and pocket inventory for website and presentation display.",
         nonLenderRoles,
         nonLenderRoles,
         [
-          selectField("mlsSource", "MLS Source", ["Local IDX", "Team feed", "Office feed", "Manual entry"], "Choose where your listings are pulled from.", "Local IDX"),
-          textField("listingAgentId", "Listing Agent ID", "Enter the ID used to find your listings in the feed.", testUser.id)
+          selectField("mlsSource", "MLS Source", ["Local IDX", "Team feed", "Office feed", "Manual entry"], "Choose which MLS feed should supply website inventory.", "Local IDX"),
+          textField("listingAgentId", "Listing Agent ID", "Enter the agent ID used to match listings inside the MLS feed.", testUser.id)
         ],
-        "Connects the MLS source and listing agent ID.",
-        "This helps your listings appear automatically on your website and presentations.",
-        "Listing access depends on MLS connection and role permissions.",
+        "Connects the MLS feed source and listing agent ID.",
+        "This helps MLS feed inventory appear automatically on your website and presentations.",
+        "MLS feed access depends on connection settings and role permissions.",
         true
       ),
       subfeature(

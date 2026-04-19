@@ -190,6 +190,14 @@ export interface LaunchedListing {
   enabled: boolean;
 }
 
+export interface LaunchedMlsFeed {
+  id: string;
+  sourceName: string;
+  agentId: string;
+  referenceId: string;
+  enabled: boolean;
+}
+
 export interface HotSheetItem {
   id: string;
   label: string;
@@ -211,6 +219,7 @@ export interface OnboardingSnapshot {
   templatePreset: string | null;
   pendingPrompt: PromptTarget | null;
   launchReady: boolean;
+  launchedMlsFeeds: LaunchedMlsFeed[];
   launchedListings: LaunchedListing[];
 }
 
