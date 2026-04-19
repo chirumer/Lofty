@@ -45,6 +45,55 @@ img {
   pointer-events: auto !important;
 }
 
+.lofty-nav-submenu {
+  position: relative;
+}
+
+.crm-only-menu,
+.crm-only-menu .display-items,
+.crm-only-menu .display-cell {
+  overflow: visible !important;
+}
+
+.crm-only-menu .display-cell {
+  position: relative;
+}
+
+.crm-only-menu .display-cell > .menu-dropdown-header > .com-dropdown {
+  left: 0;
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 40;
+}
+
+.lofty-nav-submenu > .com-dropdown-body {
+  width: 100%;
+}
+
+.lofty-nav-submenu__trigger {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.lofty-nav-submenu__arrow {
+  color: #a0a3af;
+  font-size: 12px;
+  margin-left: 12px;
+}
+
+.lofty-nav-submenu__flyout {
+  left: calc(100% - 6px);
+  position: absolute;
+  top: -10px;
+  z-index: 30;
+}
+
+.lofty-nav-submenu__flyout .crm-only-header-menu__dropdown {
+  min-width: 180px;
+}
+
 .chime-website-container.is-utility-expanded .crm-only-menu {
   flex: 1 1 auto;
   min-width: 0;

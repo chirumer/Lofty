@@ -38,7 +38,33 @@ const headerItems = [
       { label: "Transactions", icon: "icon-Transaction", href: "https://crm.lofty.com/admin/home/transaction" },
     ],
   },
-  { label: "Marketing", href: "https://crm.lofty.com/admin/home/marketing/emails" },
+  {
+    label: "Marketing",
+    href: "https://crm.lofty.com/admin/home/marketing/emails",
+    submenu: [
+      { label: "Emails", icon: "icon-mail_01", href: "https://crm.lofty.com/admin/home/marketing/emails" },
+      { label: "Text Messages", icon: "icon-message_01", href: "https://crm.lofty.com/admin/home/marketing/texts" },
+      { label: "Social Agent", icon: "icon-social_01", href: "https://crm.lofty.com/admin/home/campaigns/socialMedia" },
+      { label: "Direct Mail", icon: "icon-mailbox_01", href: "https://crm.lofty.com/admin/home/campaigns/printCenter" },
+      {
+        label: "Lead Generation",
+        icon: "icon-lead_capture",
+        href: "https://crm.lofty.com/admin/home/campaigns/dashboard",
+        submenu: [
+          { label: "Buyer Lead Gen", href: "https://crm.lofty.com/admin/home/campaigns/buyerLeadGen" },
+          { label: "Seller Lead Gen", href: "https://crm.lofty.com/admin/home/campaigns/sellerLeadGen" },
+          { label: "Re-Marketing Ads", href: "https://crm.lofty.com/admin/home/campaigns/remarketingAds" },
+        ],
+      },
+      { label: "Lofty Bloom", icon: "icon-location_03", href: "https://crm.lofty.com/admin/home/LoftyBloom" },
+      {
+        label: "Brand Awareness",
+        icon: "icon-brag",
+        href: "https://crm.lofty.com/admin/home/campaigns/sphereAds",
+        submenu: [{ label: "Local Service Ads", href: "https://crm.lofty.com/admin/home/campaigns/localServiceAds" }],
+      },
+    ],
+  },
   {
     label: "Content",
     submenu: [
@@ -154,6 +180,68 @@ function ExternalLink({ children, className, href, ...props }) {
   );
 }
 
+function MenuSubitem({ item }) {
+  const [isNestedOpen, setIsNestedOpen] = useState(false);
+
+  if (!item.submenu) {
+    return (
+      <ExternalLink
+        {...attrs.dropdown}
+        className="crm-only-header-menu__item crm-only-header-menu__subitem"
+        href={item.href}
+        needicon=""
+      >
+        {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
+        <span {...attrs.dropdown} className="crm-only-header-menu__title">
+          {item.label}
+        </span>
+      </ExternalLink>
+    );
+  }
+
+  return (
+    <div
+      {...attrs.dropdown}
+      className="com-dropdownbox menu-dropdown-header crm-only-header-menu__subitem lofty-nav-submenu"
+      needicon=""
+      onMouseEnter={() => setIsNestedOpen(true)}
+      onMouseLeave={() => setIsNestedOpen(false)}
+    >
+      <div className="com-dropdown-mask" style={dropdownMaskStyle(isNestedOpen)}></div>
+      <div className="com-dropdown-body">
+        <ExternalLink
+          {...attrs.dropdown}
+          className="crm-only-header-menu__item hoverCursor lofty-nav-submenu__trigger"
+          href={item.href}
+        >
+          {item.icon ? <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${item.icon}`}></span> : null}
+          <span {...attrs.dropdown} className="crm-only-header-menu__title">
+            {item.label}
+          </span>
+          <span {...attrs.dropdown} className="icon2017 icon-arrow_08_right lofty-nav-submenu__arrow"></span>
+        </ExternalLink>
+      </div>
+      <div className="com-dropdown lofty-nav-submenu__flyout" style={{ display: isNestedOpen ? "block" : "none" }}>
+        <div className="com-dropdown-content crm-only-header-menu__dropdown">
+          {item.submenu.map((subitem) => (
+            <ExternalLink
+              key={subitem.label}
+              {...attrs.dropdown}
+              className="crm-only-header-menu__item crm-only-header-menu__subitem"
+              href={subitem.href}
+              needicon=""
+            >
+              <span {...attrs.dropdown} className="crm-only-header-menu__title">
+                {subitem.label}
+              </span>
+            </ExternalLink>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HeaderMenuCell({ item, index, openMenu, setOpenMenu }) {
   const isOpen = openMenu === item.label;
 
@@ -177,37 +265,31 @@ function HeaderMenuCell({ item, index, openMenu, setOpenMenu }) {
   }
 
   return (
-    <div {...attrs.overflow} id={`com-overflow-display-cell-${index}`} data-index={index} className="display-cell">
+    <div
+      {...attrs.overflow}
+      id={`com-overflow-display-cell-${index}`}
+      data-index={index}
+      className="display-cell"
+      onMouseEnter={() => setOpenMenu(item.label)}
+      onMouseLeave={() => setOpenMenu((current) => (current === item.label ? null : current))}
+    >
       <div {...attrs.dropdown} {...attrs.menu} data-v-f4100c9e="" className="com-dropdownbox menu-dropdown-header">
         <div className="com-dropdown-mask" style={dropdownMaskStyle(isOpen)}></div>
-        <div
-          className="com-dropdown-body"
-          onClick={() => setOpenMenu(isOpen ? null : item.label)}
-        >
-          <button
-            type="button"
-            className="crm-only-header-menu__item isTop cursor-default lofty-reset-button"
+        <div className="com-dropdown-body">
+          <ExternalLink
+            {...attrs.dropdown}
+            className={`crm-only-header-menu__item isTop${item.href ? " hoverCursor" : " cursor-default"}`}
+            href={item.href}
           >
             <span {...attrs.dropdown} className="crm-only-header-menu__title isTop">
               {item.label}
             </span>
-          </button>
+          </ExternalLink>
         </div>
         <div className="com-dropdown" style={{ display: isOpen ? "block" : "none" }}>
           <div className="com-dropdown-content crm-only-header-menu__dropdown">
             {item.submenu.map((subitem) => (
-              <ExternalLink
-                key={subitem.label}
-                {...attrs.dropdown}
-                className="crm-only-header-menu__item crm-only-header-menu__subitem"
-                href={subitem.href}
-                needicon=""
-              >
-                <span {...attrs.dropdown} className={`icon2017 crm-only-header-menu__icon ${subitem.icon}`}></span>
-                <span {...attrs.dropdown} className="crm-only-header-menu__title">
-                  {subitem.label}
-                </span>
-              </ExternalLink>
+              <MenuSubitem key={subitem.label} item={subitem} />
             ))}
           </div>
         </div>
