@@ -111,6 +111,7 @@ import demoMlxListings from "./config/demo-mlx-listings.json";
 import demoPocketListings from "./config/demo-pocket-listings.json";
 import dialog1Image from "../dialog1.png";
 import dialog2Image from "../dialog2.png";
+import builderMascotGuideImage from "../builder-mascot-guide.jpeg";
 
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
 const COPILOT_STORAGE_KEY = "lofty-ai-copilots-panel-v1";
@@ -144,6 +145,219 @@ type PocketListingFormValues = {
   enabled: boolean;
 };
 
+type DashboardWorkflowTask = {
+  id: string;
+  title: string;
+  personName: string;
+  timeLabel: string;
+  plannedStartMinutes: number;
+  durationLabel: string;
+  taskType: "Call" | "Text" | "Email" | "Other" | "Appointment" | "Showing";
+  dueState: "overdue" | "today";
+  dueLabel: string;
+  priorityScore: number;
+  reason: string;
+  context: string;
+  detailSummary: string;
+  suggestedScript: string;
+  nextStep: string;
+  interestedListing: string;
+  contactLine: string;
+  statusTone: "urgent" | "action" | "watch";
+  statusLabel: string;
+  metadata: string[];
+  hasMeetingPrep: boolean;
+  transactionStatus: string | null;
+  appointmentLabel: string | null;
+  isScheduledEvent?: boolean;
+};
+
+type BuilderMascotTopic = {
+  cardId: LibraryCardId;
+  subfeatureId?: string;
+};
+
+type BuilderMascotMessage = {
+  id: string;
+  role: "assistant" | "user";
+  text: string;
+};
+
+function parseClockTime(label: string) {
+  const match = label.match(/(\d{1,2}):(\d{2})\s?(AM|PM)/i);
+  if (!match) {
+    return null;
+  }
+  const hours = Number(match[1]) % 12;
+  const minutes = Number(match[2]);
+  const meridiem = match[3].toUpperCase();
+  return (meridiem === "PM" ? hours + 12 : hours) * 60 + minutes;
+}
+
+function createMascotMessageId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function tokenizeQuestion(input: string) {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9#\s-]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 1);
+}
+
+function formatMascotList(items: string[]) {
+  if (items.length === 0) {
+    return "";
+  }
+  if (items.length === 1) {
+    return items[0];
+  }
+  if (items.length === 2) {
+    return `${items[0]} and ${items[1]}`;
+  }
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function getMascotTopicDetails(topic: BuilderMascotTopic | null) {
+  if (!topic) {
+    return null;
+  }
+
+  const card = getCardById(topic.cardId);
+  const subfeature = topic.subfeatureId ? getSubfeature(topic.cardId, topic.subfeatureId) : null;
+  return { card, subfeature };
+}
+
+function summarizeSetupFields(subfeature: SubfeatureDefinition) {
+  if (subfeature.promptFields.length === 0) {
+    return "There is no extra setup form here.";
+  }
+
+  const fieldLabels = subfeature.promptFields.map((field) => field.label);
+  return `Setup usually asks for ${formatMascotList(fieldLabels)}.`;
+}
+
+function buildMascotExplanation(
+  roleId: RoleId,
+  topic: BuilderMascotTopic,
+  question?: string
+) {
+  const details = getMascotTopicDetails(topic);
+  if (!details) {
+    return "I can explain any tab or feature here. Click Explain, or ask a simple question.";
+  }
+
+  const { card, subfeature } = details;
+  const roleName = getRoleById(roleId).name;
+  const lowerQuestion = question?.toLowerCase() ?? "";
+
+  if (!subfeature) {
+    return `${card.label} is the tab for ${card.whatItDoes.toLowerCase()} For ${roleName}, this is where you manage ${formatMascotList(card.subfeatures.map((item) => item.name))}.`;
+  }
+
+  const isRequired = subfeature.requiredFor.includes(roleId);
+  const accessSummary = subfeature.allowedRoles.length === roleDefinitions.length ? "All roles can use it." : "Access depends on role.";
+
+  if (/(who|access|role|locked|available)/.test(lowerQuestion)) {
+    return `${subfeature.name} sits inside ${card.label}. ${accessSummary} If it is locked, it is because ${subfeature.lockedReason.toLowerCase()}`;
+  }
+
+  if (/(skip|optional|required)/.test(lowerQuestion)) {
+    return isRequired
+      ? `${subfeature.name} is required for ${roleName}. You should set this up before launch.`
+      : `${subfeature.name} is optional for ${roleName}. You can skip it for now.`;
+  }
+
+  if (/(setup|configure|turn on|enable|need|field)/.test(lowerQuestion)) {
+    return `${subfeature.name} is used to ${subfeature.description.toLowerCase()} ${summarizeSetupFields(subfeature)}`;
+  }
+
+  if (/(why|matter|important)/.test(lowerQuestion)) {
+    return `${subfeature.name} matters because ${subfeature.example}`;
+  }
+
+  if (/(example|use case|when)/.test(lowerQuestion)) {
+    return subfeature.example;
+  }
+
+  return `${subfeature.name} helps with ${subfeature.description.toLowerCase()} ${isRequired ? "It is required for your role." : "It is optional for your role."} ${summarizeSetupFields(subfeature)}`;
+}
+
+function findMascotTopicMatch(question: string, fallbackTopic: BuilderMascotTopic | null) {
+  const normalizedQuestion = question.toLowerCase();
+  const queryTokens = tokenizeQuestion(question);
+  const isContextualQuestion = /\b(this|it|that|feature|tab|here)\b/.test(normalizedQuestion);
+
+  if (fallbackTopic && (isContextualQuestion || queryTokens.length <= 3)) {
+    return fallbackTopic;
+  }
+
+  let bestScore = 0;
+  let bestTopic: BuilderMascotTopic | null = fallbackTopic;
+
+  libraryCardDefinitions.forEach((card) => {
+    const cardText = `${card.label} ${card.description} ${card.whatItDoes} ${card.whyItMatters} ${card.tip}`.toLowerCase();
+    let cardScore = 0;
+    if (normalizedQuestion.includes(card.label.toLowerCase())) {
+      cardScore += 8;
+    }
+    cardScore += queryTokens.filter((token) => cardText.includes(token)).length;
+    if (cardScore > bestScore) {
+      bestScore = cardScore;
+      bestTopic = { cardId: card.id };
+    }
+
+    card.subfeatures.forEach((subfeature) => {
+      const subfeatureText = [
+        card.label,
+        subfeature.name,
+        subfeature.description,
+        subfeature.setupSummary,
+        subfeature.example,
+        subfeature.lockedReason,
+        ...subfeature.promptFields.map((field) => `${field.label} ${field.helperText}`)
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      let subfeatureScore = 0;
+      if (normalizedQuestion.includes(subfeature.name.toLowerCase())) {
+        subfeatureScore += 12;
+      }
+      if (normalizedQuestion.includes(card.label.toLowerCase())) {
+        subfeatureScore += 3;
+      }
+      subfeatureScore += queryTokens.filter((token) => subfeatureText.includes(token)).length;
+
+      if (subfeatureScore > bestScore) {
+        bestScore = subfeatureScore;
+        bestTopic = { cardId: card.id, subfeatureId: subfeature.id };
+      }
+    });
+  });
+
+  return bestTopic;
+}
+
+function answerMascotQuestion(
+  roleId: RoleId,
+  question: string,
+  fallbackTopic: BuilderMascotTopic | null
+) {
+  const matchedTopic = findMascotTopicMatch(question, fallbackTopic);
+  if (!matchedTopic) {
+    return {
+      topic: fallbackTopic,
+      text: "I can help with any tab or feature in this builder. Ask me about things like People, Smart Plans, Website, Lead Routing, Reporting, or AI Assistant."
+    };
+  }
+
+  return {
+    topic: matchedTopic,
+    text: buildMascotExplanation(roleId, matchedTopic, question)
+  };
+}
 type ContentEditorState =
   | {
       mode: "create" | "edit";
@@ -502,6 +716,10 @@ function App() {
   const [mobileLibraryOpen, setMobileLibraryOpen] = useState(false);
   const [showLaunchConfirm, setShowLaunchConfirm] = useState(false);
   const [promptValues, setPromptValues] = useState<PromptValues>({});
+  const [isMascotOpen, setIsMascotOpen] = useState(false);
+  const [mascotTopic, setMascotTopic] = useState<BuilderMascotTopic | null>(null);
+  const [mascotMessages, setMascotMessages] = useState<BuilderMascotMessage[]>([]);
+  const [mascotQuestion, setMascotQuestion] = useState("");
 
   useEffect(() => {
     setSnapshot(loadSnapshot());
@@ -520,6 +738,27 @@ function App() {
     () => (snapshot.selectedRole ? getRoleById(snapshot.selectedRole) : null),
     [snapshot.selectedRole]
   );
+
+  useEffect(() => {
+    if (!snapshot.selectedRole) {
+      setMascotMessages([]);
+      setMascotQuestion("");
+      setMascotTopic(null);
+      setIsMascotOpen(false);
+      return;
+    }
+
+    setMascotMessages([
+      {
+        id: createMascotMessageId(),
+        role: "assistant",
+        text: "Hi, I’m your Lofty Guide. Click Explain on any feature, or ask me a quick question."
+      }
+    ]);
+    setMascotQuestion("");
+    setMascotTopic(null);
+    setIsMascotOpen(false);
+  }, [snapshot.selectedRole]);
 
   const accessibleCards = useMemo(
     () => (snapshot.selectedRole ? getAccessibleCards(snapshot.selectedRole) : []),
@@ -593,6 +832,70 @@ function App() {
     setSelectedSubfeatureId(null);
     setCardQuery("");
     setMobileLibraryOpen(false);
+  }
+
+  function openMascot(topic: BuilderMascotTopic, question?: string) {
+    if (!snapshot.selectedRole) {
+      return;
+    }
+
+    const answer = buildMascotExplanation(snapshot.selectedRole, topic, question);
+    setMascotTopic(topic);
+    setMascotMessages([
+      {
+        id: createMascotMessageId(),
+        role: "assistant",
+        text: answer
+      }
+    ]);
+    setMascotQuestion("");
+    setIsMascotOpen(true);
+  }
+
+  function handleExplainSubfeature(cardId: LibraryCardId, subfeatureId: string) {
+    openMascot({ cardId, subfeatureId }, "What does this do?");
+  }
+
+  function handleMascotQuestionSubmit(questionOverride?: string) {
+    if (!snapshot.selectedRole) {
+      return;
+    }
+
+    const question = (questionOverride ?? mascotQuestion).trim();
+    if (!question) {
+      return;
+    }
+
+    const fallbackTopic =
+      mascotTopic ??
+      (selectedSubfeatureId && activeCard
+        ? { cardId: activeCard.id, subfeatureId: selectedSubfeatureId }
+        : activeCard
+          ? { cardId: activeCard.id }
+          : null);
+
+    const answer = answerMascotQuestion(snapshot.selectedRole, question, fallbackTopic);
+    setMascotTopic(answer.topic);
+    setMascotMessages((current) => [
+      ...current,
+      { id: createMascotMessageId(), role: "user", text: question },
+      { id: createMascotMessageId(), role: "assistant", text: answer.text }
+    ]);
+    setMascotQuestion("");
+    setIsMascotOpen(true);
+  }
+
+  function handleOpenMascotGeneral() {
+    setIsMascotOpen(true);
+    if (mascotMessages.length === 0 && snapshot.selectedRole) {
+      setMascotMessages([
+        {
+          id: createMascotMessageId(),
+          role: "assistant",
+          text: "Ask me about any tab, feature, or setup field."
+        }
+      ]);
+    }
   }
 
   function activateCard(cardId: LibraryCardId) {
@@ -880,6 +1183,7 @@ function App() {
                   {activeCard && selectedRole && activeReadiness ? (
                     <ActiveCard
                       card={activeCard}
+                      role={selectedRole}
                       roleId={selectedRole.id}
                       status={snapshot.cardStates[activeCard.id] ?? "not-started"}
                       toggles={snapshot.subfeatureToggles[activeCard.id] ?? {}}
@@ -893,12 +1197,22 @@ function App() {
                         setSelectedSubfeatureId(subfeatureId);
                       }}
                       onToggleSubfeature={(subfeature, nextValue) => handleToggleSubfeature(activeCard.id, subfeature, nextValue)}
+                      onExplainSubfeature={(subfeatureId) => handleExplainSubfeature(activeCard.id, subfeatureId)}
                       onPromptChange={(fieldId, value) =>
                         setPromptValues((current) => ({
                           ...current,
                           [fieldId]: value
                         }))
                       }
+                      mascotTopic={mascotTopic}
+                      mascotMessages={mascotMessages}
+                      mascotQuestion={mascotQuestion}
+                      mascotOpen={isMascotOpen}
+                      onOpenMascotGeneral={handleOpenMascotGeneral}
+                      onCloseMascot={() => setIsMascotOpen(false)}
+                      onMascotQuestionChange={setMascotQuestion}
+                      onSubmitMascotQuestion={() => handleMascotQuestionSubmit()}
+                      onQuickAskMascot={(question) => handleMascotQuestionSubmit(question)}
                       onCancelPrompt={closePrompt}
                       onSavePrompt={savePrompt}
                       onQuickSavePrompt={quickSavePrompt}
@@ -1193,6 +1507,7 @@ function getConfigOptionIcon(option: string) {
 
 function ActiveCard({
   card,
+  role,
   roleId,
   status,
   toggles,
@@ -1203,13 +1518,24 @@ function ActiveCard({
   selectedSubfeatureId,
   onSelectSubfeature,
   onToggleSubfeature,
+  onExplainSubfeature,
   onPromptChange,
+  mascotTopic,
+  mascotMessages,
+  mascotQuestion,
+  mascotOpen,
+  onOpenMascotGeneral,
+  onCloseMascot,
+  onMascotQuestionChange,
+  onSubmitMascotQuestion,
+  onQuickAskMascot,
   onCancelPrompt,
   onSavePrompt,
   onQuickSavePrompt,
   onBuild
 }: {
   card: LibraryCardDefinition;
+  role: RoleDefinition;
   roleId: RoleId;
   status: CardState;
   toggles: CardToggleStore;
@@ -1220,13 +1546,24 @@ function ActiveCard({
   selectedSubfeatureId: string | null;
   onSelectSubfeature: (subfeatureId: string) => void;
   onToggleSubfeature: (subfeature: SubfeatureDefinition, nextValue: boolean) => void;
+  onExplainSubfeature: (subfeatureId: string) => void;
   onPromptChange: (fieldId: string, value: string | boolean) => void;
+  mascotTopic: BuilderMascotTopic | null;
+  mascotMessages: BuilderMascotMessage[];
+  mascotQuestion: string;
+  mascotOpen: boolean;
+  onOpenMascotGeneral: () => void;
+  onCloseMascot: () => void;
+  onMascotQuestionChange: (value: string) => void;
+  onSubmitMascotQuestion: () => void;
+  onQuickAskMascot: (question: string) => void;
   onCancelPrompt: () => void;
   onSavePrompt: () => void;
   onQuickSavePrompt: (fieldId: string, value: string | boolean) => void;
   onBuild: () => void;
 }) {
   const Icon = card.icon;
+  const showingCardMascot = mascotOpen && mascotTopic?.cardId === card.id;
 
   return (
     <article className="active-card">
@@ -1261,13 +1598,33 @@ function ActiveCard({
       </header>
 
       <div className="active-card-layout">
-        <div className="active-card-subfeatures">
+        <div className={`active-card-subfeatures ${showingCardMascot ? "active-card-subfeatures--mascot-open" : ""}`}>
           <div className="section-label-row">
             <div>
               <h3>Features</h3>
             </div>
-            <span>{readiness.enabledAllowedSubfeatures.length} enabled</span>
+            <div className="section-label-actions">
+              <span>{readiness.enabledAllowedSubfeatures.length} enabled</span>
+              <button type="button" className="secondary-button subfeature-explain-button" onClick={onOpenMascotGeneral}>
+                Ask guide
+              </button>
+            </div>
           </div>
+          {showingCardMascot ? (
+            <div className="builder-mascot-anchor builder-mascot-anchor--card">
+              <BuilderMascotPopover
+                variant="card"
+                role={role}
+                topic={mascotTopic}
+                messages={mascotMessages}
+                question={mascotQuestion}
+                onClose={onCloseMascot}
+                onQuestionChange={onMascotQuestionChange}
+                onSubmitQuestion={onSubmitMascotQuestion}
+                onQuickAsk={onQuickAskMascot}
+              />
+            </div>
+          ) : null}
           <div className="feature-list">
             {card.subfeatures.map((subfeature) => {
               const allowed = subfeature.allowedRoles.includes(roleId);
@@ -1306,6 +1663,18 @@ function ActiveCard({
                     </div>
                   </div>
                   <div className="subfeature-row-actions">
+                    <button
+                      type="button"
+                      className="secondary-button subfeature-explain-button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectSubfeature(subfeature.id);
+                        onExplainSubfeature(subfeature.id);
+                      }}
+                    >
+                      Explain
+                    </button>
+
                     <button
                       type="button"
                       className={`toggle-button toggle-button--switch ${enabled ? "toggle-button--on" : ""}`}
@@ -1472,6 +1841,115 @@ function ActiveCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function BuilderMascotPopover({
+  variant = "feature",
+  role,
+  topic,
+  messages,
+  question,
+  onClose,
+  onQuestionChange,
+  onSubmitQuestion,
+  onQuickAsk
+}: {
+  variant?: "feature" | "card";
+  role: RoleDefinition;
+  topic: BuilderMascotTopic | null;
+  messages: BuilderMascotMessage[];
+  question: string;
+  onClose: () => void;
+  onQuestionChange: (value: string) => void;
+  onSubmitQuestion: () => void;
+  onQuickAsk: (question: string) => void;
+}) {
+  const topicDetails = getMascotTopicDetails(topic);
+  const quickQuestions = topicDetails?.subfeature
+    ? [
+        "What does this do?",
+        "What do I need to set up?",
+        `Can ${role.name} skip this?`
+      ]
+    : topicDetails?.card
+      ? ["What is this tab for?", `What should ${role.name} turn on first?`]
+      : ["What should I build first?", "What can I skip for launch?"];
+
+  return (
+    <aside className={`builder-mascot-popover builder-mascot-popover--${variant}`} aria-label="Lofty Guide">
+      <div className="builder-mascot-popover__header">
+        <div className="builder-mascot-popover__identity">
+          <img src={builderMascotGuideImage.src} alt="" aria-hidden="true" />
+          <div>
+            <span className="section-kicker">Lofty Guide</span>
+            <strong>
+              {topicDetails?.subfeature
+                ? `Explaining ${topicDetails.subfeature.name}`
+                : topicDetails?.card
+                  ? `${topicDetails.card.label} tab help`
+                  : "Ask any question"}
+            </strong>
+          </div>
+        </div>
+        <button type="button" className="icon-button" onClick={onClose} aria-label="Close Lofty Guide">
+          <X size={16} />
+        </button>
+      </div>
+
+      {topicDetails ? (
+        <div className="builder-mascot-topic">
+          <span className="mini-badge mini-badge--required">{topicDetails.card.label}</span>
+          {topicDetails.subfeature ? <span className="mini-badge">{topicDetails.subfeature.name}</span> : null}
+        </div>
+      ) : null}
+
+      <div className="builder-mascot-messages">
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className={`builder-mascot-message builder-mascot-message--${message.role}`}
+          >
+            {message.text}
+          </div>
+        ))}
+      </div>
+
+      <div className="builder-mascot-quick-asks">
+        {quickQuestions.map((item) => (
+          <button
+            key={item}
+            type="button"
+            className="mini-chip"
+            onClick={() => onQuickAsk(item)}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+
+      <form
+        className="builder-mascot-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmitQuestion();
+        }}
+      >
+        <textarea
+          value={question}
+          onChange={(event) => onQuestionChange(event.target.value)}
+          placeholder="Ask what this feature does or what you need to set up."
+        />
+        <div className="builder-mascot-form__actions">
+          <button type="button" className="secondary-button" onClick={onClose}>
+            Hide
+          </button>
+          <button type="submit" className="primary-button">
+            Ask
+          </button>
+        </div>
+      </form>
+    </aside>
   );
 }
 

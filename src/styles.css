@@ -757,6 +757,11 @@ textarea::placeholder {
   border: 1px solid #e8eef9;
   border-radius: 8px;
   background: linear-gradient(180deg, #fdfefe, #f8fbff);
+  position: relative;
+}
+
+.active-card-subfeatures--mascot-open {
+  padding-right: 412px;
 }
 
 .active-card-subfeatures .feature-list {
@@ -775,6 +780,7 @@ textarea::placeholder {
   text-align: left;
   align-items: start;
   min-height: 0;
+  position: relative;
 }
 
 .subfeature-row--configuring {
@@ -799,7 +805,22 @@ textarea::placeholder {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
+}
+
+.subfeature-explain-button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  box-shadow: none;
+}
+
+.section-label-actions {
+  display: inline-flex;
+  align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .sr-only {
@@ -816,6 +837,10 @@ textarea::placeholder {
 
 .subfeature-expand-button {
   color: var(--ink-soft);
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 10px;
 }
 
 .subfeature-expand-button svg {
@@ -969,9 +994,9 @@ textarea::placeholder {
 .toggle-button--switch {
   position: relative;
   justify-content: flex-start;
-  width: 68px;
-  min-width: 68px;
-  min-height: 32px;
+  width: 58px;
+  min-width: 58px;
+  min-height: 28px;
   padding: 2px;
   border: 0;
   border-radius: 999px;
@@ -980,8 +1005,8 @@ textarea::placeholder {
 }
 
 .toggle-button--switch span:first-child {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
   background: #ffffff;
   box-shadow: 0 2px 6px rgba(26, 55, 119, 0.12);
@@ -994,7 +1019,7 @@ textarea::placeholder {
 }
 
 .toggle-button--switch.toggle-button--on span:first-child {
-  transform: translateX(36px);
+  transform: translateX(30px);
   background: #ffffff;
 }
 
@@ -4936,6 +4961,147 @@ textarea::placeholder {
   justify-content: flex-start;
 }
 
+.builder-mascot-popover {
+  width: min(380px, calc(100vw - 80px));
+  max-height: min(76vh, 760px);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(37, 84, 232, 0.14);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 22px 58px rgba(14, 26, 66, 0.22);
+  backdrop-filter: blur(18px);
+  position: absolute;
+  z-index: 8;
+  overflow: hidden;
+}
+
+.builder-mascot-anchor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8;
+}
+
+.builder-mascot-anchor > .builder-mascot-popover {
+  pointer-events: auto;
+}
+
+.builder-mascot-anchor--card {
+  top: 18px;
+  right: 18px;
+  left: auto;
+  bottom: auto;
+}
+
+.builder-mascot-popover--card {
+  top: 0;
+  right: 0;
+}
+
+.builder-mascot-popover__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.builder-mascot-popover__identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.builder-mascot-popover__identity img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 18px;
+}
+
+.builder-mascot-popover__identity strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.98rem;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.builder-mascot-topic,
+.builder-mascot-quick-asks,
+.builder-mascot-form__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.builder-mascot-quick-asks {
+  max-height: 92px;
+  overflow: auto;
+  align-content: start;
+  padding-right: 4px;
+}
+
+.builder-mascot-messages {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  padding-right: 4px;
+  overflow: auto;
+}
+
+.builder-mascot-message {
+  padding: 10px 12px;
+  border-radius: 16px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  font-size: 0.94rem;
+}
+
+.builder-mascot-message--assistant {
+  background: linear-gradient(180deg, #f4f8ff, #eef4ff);
+  border: 1px solid rgba(37, 84, 232, 0.1);
+}
+
+.builder-mascot-message--user {
+  justify-self: end;
+  max-width: 88%;
+  background: #eef4ff;
+  border: 1px solid rgba(37, 84, 232, 0.14);
+}
+
+.builder-mascot-form {
+  display: grid;
+  grid-template-rows: minmax(0, auto) auto;
+  gap: 10px;
+  min-height: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(37, 84, 232, 0.08);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.builder-mascot-form textarea {
+  width: 100%;
+  min-height: 52px;
+  max-height: 88px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fbfdff;
+  padding: 12px 14px;
+  font: inherit;
+  color: var(--ink);
+}
+
+.builder-mascot-form__actions {
+  justify-content: flex-end;
+  position: sticky;
+  bottom: 0;
+  padding-top: 6px;
+  background: rgba(255, 255, 255, 0.98);
+}
 .chime-website-container.is-utility-expanded .smartplans-builder-layout {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
 }
@@ -5022,6 +5188,15 @@ textarea::placeholder {
   .smartplans-builder-actions {
     justify-self: start;
   }
+
+  .builder-mascot-popover {
+    width: min(360px, 100%);
+  }
+
+  .active-card-subfeatures--mascot-open {
+    padding-right: 0;
+    padding-top: 332px;
+  }
 }
 
 @media (max-width: 760px) {
@@ -5066,6 +5241,25 @@ textarea::placeholder {
     grid-template-columns: 1fr;
   }
 
+  .builder-mascot-popover {
+    width: 100%;
+    max-height: none;
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
+  }
+
+  .builder-mascot-anchor {
+    position: relative;
+    inset: auto;
+    pointer-events: auto;
+  }
+
+  .active-card-subfeatures--mascot-open,
+  .subfeature-row--mascot-open {
+    padding-top: 14px;
+  }
   .smartplans-guide-callout--index {
     position: static;
     margin-bottom: 14px;
