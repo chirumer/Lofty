@@ -20,6 +20,7 @@ import {
   AlertCircle,
   ArrowRight,
   Check,
+  ChevronDown,
   Layers3,
   Lock,
   Rocket,
@@ -129,7 +130,8 @@ function getCardReadiness(snapshot: OnboardingSnapshot, card: LibraryCardDefinit
 }
 
 function App() {
-  const [snapshot, setSnapshot] = useState<OnboardingSnapshot>(() => loadSnapshot());
+  const [snapshot, setSnapshot] = useState<OnboardingSnapshot>(emptySnapshot);
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<LibraryCardId | null>(null);
   const [selectedSubfeatureId, setSelectedSubfeatureId] = useState<string | null>(null);
   const [draggingCardId, setDraggingCardId] = useState<LibraryCardId | null>(null);
@@ -139,8 +141,17 @@ function App() {
   const [promptValues, setPromptValues] = useState<PromptValues>({});
 
   useEffect(() => {
+    const restoredSnapshot = loadSnapshot();
+    setSnapshot(restoredSnapshot);
+    setHasHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  }, [snapshot]);
+  }, [hasHydrated, snapshot]);
 
   const selectedRole = useMemo(
     () => (snapshot.selectedRole ? getRoleById(snapshot.selectedRole) : null),
@@ -455,6 +466,11 @@ function App() {
               <BrandMark className="builder-brand-mark" />
               <h1>Build your platform</h1>
             </div>
+            <div className="builder-header-actions">
+              <button className="secondary-button" onClick={resetBuilder}>
+                Back to role selection
+              </button>
+            </div>
           </header>
 
           <section className="overview-strip">
@@ -502,12 +518,22 @@ function App() {
                       toggles={snapshot.subfeatureToggles[activeCard.id] ?? {}}
                       configs={snapshot.subfeatureConfigs[activeCard.id] ?? {}}
                       readiness={activeReadiness}
+                      pendingPrompt={snapshot.pendingPrompt}
+                      promptValues={promptValues}
                       selectedSubfeatureId={selectedSubfeatureId}
                       onSelectSubfeature={(subfeatureId) => {
                         setSelectedCardId(activeCard.id);
                         setSelectedSubfeatureId(subfeatureId);
                       }}
                       onToggleSubfeature={(subfeature, nextValue) => handleToggleSubfeature(activeCard.id, subfeature, nextValue)}
+                      onPromptChange={(fieldId, value) =>
+                        setPromptValues((current) => ({
+                          ...current,
+                          [fieldId]: value
+                        }))
+                      }
+                      onCancelPrompt={closePrompt}
+                      onSavePrompt={savePrompt}
                       onBuild={buildActiveCard}
                     />
                   ) : (
@@ -545,22 +571,6 @@ function App() {
                 {libraryPanel}
               </div>
             </div>
-          ) : null}
-
-          {snapshot.pendingPrompt && pendingSubfeature ? (
-            <SubfeaturePromptModal
-              card={getCardById(snapshot.pendingPrompt.cardId)}
-              subfeature={pendingSubfeature}
-              values={promptValues}
-              onChange={(fieldId, value) =>
-                setPromptValues((current) => ({
-                  ...current,
-                  [fieldId]: value
-                }))
-              }
-              onCancel={closePrompt}
-              onSave={savePrompt}
-            />
           ) : null}
 
           {showLaunchConfirm ? (
@@ -804,9 +814,14 @@ function ActiveCard({
   toggles,
   configs,
   readiness,
+  pendingPrompt,
+  promptValues,
   selectedSubfeatureId,
   onSelectSubfeature,
   onToggleSubfeature,
+  onPromptChange,
+  onCancelPrompt,
+  onSavePrompt,
   onBuild
 }: {
   card: LibraryCardDefinition;
@@ -815,25 +830,32 @@ function ActiveCard({
   toggles: CardToggleStore;
   configs: Record<string, PromptValues>;
   readiness: ReturnType<typeof getCardReadiness>;
+  pendingPrompt: OnboardingSnapshot["pendingPrompt"];
+  promptValues: PromptValues;
   selectedSubfeatureId: string | null;
   onSelectSubfeature: (subfeatureId: string) => void;
   onToggleSubfeature: (subfeature: SubfeatureDefinition, nextValue: boolean) => void;
+  onPromptChange: (fieldId: string, value: string | boolean) => void;
+  onCancelPrompt: () => void;
+  onSavePrompt: () => void;
   onBuild: () => void;
 }) {
   const Icon = card.icon;
 
   return (
     <article className="active-card">
-      <div className="active-card-header">
-        <div>
-          <p className="section-kicker">Active tab</p>
-          <div className="active-card-title-row">
-            <span className="active-card-icon">
-              <Icon size={18} />
-            </span>
-            <h2>{card.label}</h2>
+      <header className="active-tab-site-header">
+        <div className="active-tab-site-brand">
+          <BrandMark className="active-tab-brand-mark" />
+          <div className="active-tab-site-title">
+            <span className="active-tab-site-label">Active tab</span>
+            <div className="active-card-title-row">
+              <span className="active-card-icon">
+                <Icon size={18} />
+              </span>
+              <h2>{card.label}</h2>
+            </div>
           </div>
-          <p>{card.description}</p>
         </div>
         <div className="active-card-header-meta">
           <div className="chip-wrap">
@@ -850,22 +872,27 @@ function ActiveCard({
             <span className="mini-badge">Incomplete {readiness.incompleteEnabledSubfeatures.length}</span>
           </div>
         </div>
-      </div>
+      </header>
 
       <div className="active-card-layout">
         <div className="active-card-subfeatures">
           <div className="section-label-row">
-            <h3>Subfeatures</h3>
+            <div>
+              <h3>Features</h3>
+            </div>
             <span>{readiness.enabledAllowedSubfeatures.length} enabled</span>
           </div>
           <div className="feature-list">
             {card.subfeatures.map((subfeature) => {
               const allowed = subfeature.allowedRoles.includes(roleId);
               const enabled = toggles[subfeature.id] ?? false;
+              const configuring =
+                pendingPrompt?.cardId === card.id && pendingPrompt.subfeatureId === subfeature.id;
+              const canConfigure = allowed && subfeature.promptFields.length > 0;
               return (
                 <div
                   key={subfeature.id}
-                  className={`subfeature-row ${selectedSubfeatureId === subfeature.id ? "subfeature-row--selected" : ""} ${!allowed ? "subfeature-row--locked" : ""}`}
+                  className={`subfeature-row ${selectedSubfeatureId === subfeature.id ? "subfeature-row--selected" : ""} ${!allowed ? "subfeature-row--locked" : ""} ${configuring ? "subfeature-row--configuring" : ""}`}
                   onClick={() => onSelectSubfeature(subfeature.id)}
                   role="button"
                   tabIndex={0}
@@ -887,21 +914,108 @@ function ActiveCard({
                         {configs[subfeature.id] ? <span className="mini-badge">Configured</span> : null}
                       </div>
                     </div>
-                    <p>{subfeature.description}</p>
-                    <small>{allowed ? subfeature.setupSummary : subfeature.lockedReason}</small>
                   </div>
-                  <button
-                    type="button"
-                    className={`toggle-button ${enabled ? "toggle-button--on" : ""}`}
-                    disabled={!allowed}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onToggleSubfeature(subfeature, !enabled);
-                    }}
-                  >
-                    <span />
-                    {allowed ? (enabled ? "On" : "Off") : "Locked"}
-                  </button>
+                  <div className="subfeature-row-actions">
+                    <button
+                      type="button"
+                      className={`toggle-button toggle-button--switch ${enabled ? "toggle-button--on" : ""}`}
+                      disabled={!allowed}
+                      aria-pressed={enabled}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleSubfeature(subfeature, !enabled);
+                      }}
+                    >
+                      <span />
+                      <span className="sr-only">
+                        {allowed ? `Toggle ${subfeature.name}` : `${subfeature.name} is locked`}
+                      </span>
+                    </button>
+
+                    {canConfigure ? (
+                      <button
+                        type="button"
+                        className={`icon-button subfeature-expand-button ${configuring ? "subfeature-expand-button--open" : ""}`}
+                        aria-label={configuring ? `Collapse ${subfeature.name} configuration` : `Expand ${subfeature.name} configuration`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (configuring) {
+                            onCancelPrompt();
+                            return;
+                          }
+                          onSelectSubfeature(subfeature.id);
+                          onToggleSubfeature(subfeature, true);
+                        }}
+                      >
+                        <ChevronDown size={16} />
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {configuring ? (
+                    <div className="subfeature-config-dropdown" onClick={(event) => event.stopPropagation()}>
+                      <div className="subfeature-config-header">
+                        <strong>Configure {subfeature.name}</strong>
+                        <span>{subfeature.setupSummary}</span>
+                      </div>
+
+                      <div className="field-stack">
+                        {subfeature.promptFields.map((field) => (
+                          <label key={field.id} className="field-block">
+                            <div className="field-label-row">
+                              <span>{field.label}</span>
+                              {field.required ? <small>Required</small> : <small>Optional</small>}
+                            </div>
+
+                            {field.type === "select" ? (
+                              <select
+                                value={String(promptValues[field.id] ?? "")}
+                                onChange={(event) => onPromptChange(field.id, event.target.value)}
+                              >
+                                {field.options?.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : field.type === "textarea" ? (
+                              <textarea
+                                value={String(promptValues[field.id] ?? "")}
+                                placeholder={field.placeholder}
+                                onChange={(event) => onPromptChange(field.id, event.target.value)}
+                              />
+                            ) : field.type === "toggle" ? (
+                              <button
+                                type="button"
+                                className={`toggle-button ${promptValues[field.id] ? "toggle-button--on" : ""}`}
+                                onClick={() => onPromptChange(field.id, !Boolean(promptValues[field.id]))}
+                              >
+                                {promptValues[field.id] ? "On" : "Off"}
+                              </button>
+                            ) : (
+                              <input
+                                type="text"
+                                value={String(promptValues[field.id] ?? "")}
+                                placeholder={field.placeholder}
+                                onChange={(event) => onPromptChange(field.id, event.target.value)}
+                              />
+                            )}
+
+                            <p>{field.helperText}</p>
+                          </label>
+                        ))}
+                      </div>
+
+                      <div className="panel-button-row">
+                        <button className="secondary-button" onClick={onCancelPrompt}>
+                          Cancel
+                        </button>
+                        <button className="primary-button" onClick={onSavePrompt}>
+                          Save and enable
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -995,91 +1109,6 @@ function LaunchSummary({
         </button>
       </div>
     </div>
-  );
-}
-
-function SubfeaturePromptModal({
-  card,
-  subfeature,
-  values,
-  onChange,
-  onCancel,
-  onSave
-}: {
-  card: LibraryCardDefinition;
-  subfeature: SubfeatureDefinition;
-  values: PromptValues;
-  onChange: (fieldId: string, value: string | boolean) => void;
-  onCancel: () => void;
-  onSave: () => void;
-}) {
-  return (
-    <ModalFrame
-      title={`Turn on ${subfeature.name}`}
-      subtitle={`${subfeature.setupSummary} Add the minimum information below to enable it inside ${card.label} tab.`}
-      onClose={onCancel}
-    >
-      <div className="prompt-stack">
-        <div className="info-block">
-          <small>What this helps with</small>
-          <strong>{subfeature.example}</strong>
-        </div>
-
-        <div className="field-stack">
-          {subfeature.promptFields.map((field) => (
-            <label key={field.id} className="field-block">
-              <div className="field-label-row">
-                <span>{field.label}</span>
-                {field.required ? <small>Required</small> : <small>Optional</small>}
-              </div>
-
-              {field.type === "select" ? (
-                <select value={String(values[field.id] ?? "")} onChange={(event) => onChange(field.id, event.target.value)}>
-                  {field.options?.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              ) : field.type === "textarea" ? (
-                <textarea
-                  value={String(values[field.id] ?? "")}
-                  placeholder={field.placeholder}
-                  onChange={(event) => onChange(field.id, event.target.value)}
-                />
-              ) : field.type === "toggle" ? (
-                <button
-                  type="button"
-                  className={`toggle-button ${values[field.id] ? "toggle-button--on" : ""}`}
-                  onClick={() => onChange(field.id, !Boolean(values[field.id]))}
-                >
-                  <span />
-                  {values[field.id] ? "On" : "Off"}
-                </button>
-              ) : (
-                <input
-                  type="text"
-                  value={String(values[field.id] ?? "")}
-                  placeholder={field.placeholder}
-                  onChange={(event) => onChange(field.id, event.target.value)}
-                />
-              )}
-
-              <p>{field.helperText}</p>
-            </label>
-          ))}
-        </div>
-
-        <div className="panel-button-row">
-          <button className="secondary-button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button className="primary-button" onClick={onSave}>
-            Save and enable
-          </button>
-        </div>
-      </div>
-    </ModalFrame>
   );
 }
 

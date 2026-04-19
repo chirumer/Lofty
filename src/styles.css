@@ -667,6 +667,9 @@ textarea::placeholder {
   display: grid;
   gap: 18px;
   min-height: 560px;
+  padding: 0;
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .active-card-header {
@@ -675,6 +678,40 @@ textarea::placeholder {
   gap: 16px;
   align-items: flex-start;
   flex-wrap: wrap;
+}
+
+.active-tab-site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(223, 231, 244, 0.96);
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.active-tab-site-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.active-tab-brand-mark .brand-logo-image {
+  height: 36px;
+}
+
+.active-tab-site-title {
+  display: grid;
+  gap: 4px;
+}
+
+.active-tab-site-label {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .active-card-header-meta {
@@ -687,6 +724,7 @@ textarea::placeholder {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 18px;
+  padding: 22px;
 }
 
 .active-card-subfeatures,
@@ -696,8 +734,13 @@ textarea::placeholder {
   align-content: start;
   padding: 16px;
   border: 1px solid #e8eef9;
-  border-radius: 18px;
+  border-radius: 8px;
   background: linear-gradient(180deg, #fdfefe, #f8fbff);
+}
+
+.active-card-subfeatures .feature-list {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: stretch;
 }
 
 .subfeature-row {
@@ -706,9 +749,15 @@ textarea::placeholder {
   gap: 16px;
   padding: 14px;
   border: 1px solid #e7eef9;
-  border-radius: 16px;
+  border-radius: 8px;
   background: #ffffff;
   text-align: left;
+  align-items: start;
+  min-height: 0;
+}
+
+.subfeature-row--configuring {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .subfeature-row--selected {
@@ -722,7 +771,56 @@ textarea::placeholder {
 
 .subfeature-row-copy {
   display: grid;
-  gap: 8px;
+  gap: 6px;
+}
+
+.subfeature-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.subfeature-expand-button {
+  color: var(--ink-soft);
+}
+
+.subfeature-expand-button svg {
+  transition: transform 180ms ease;
+}
+
+.subfeature-expand-button--open svg {
+  transform: rotate(180deg);
+}
+
+.subfeature-config-dropdown {
+  display: grid;
+  gap: 14px;
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid #e8eef9;
+}
+
+.subfeature-config-header {
+  display: grid;
+  gap: 4px;
+}
+
+.subfeature-config-header span {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
 }
 
 .field-stack {
@@ -775,25 +873,17 @@ textarea::placeholder {
 .toggle-button {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: center;
+  gap: 8px;
   width: fit-content;
   min-width: 92px;
   min-height: 40px;
-  padding: 6px 12px 6px 8px;
+  padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 8px;
   background: #eef3fb;
   color: var(--ink-soft);
   font-weight: 700;
-}
-
-.toggle-button span {
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: #ffffff;
-  box-shadow: 0 4px 10px rgba(26, 55, 119, 0.14);
 }
 
 .toggle-button--on {
@@ -802,8 +892,36 @@ textarea::placeholder {
   border-color: rgba(37, 84, 232, 0.22);
 }
 
-.toggle-button--on span {
-  background: linear-gradient(180deg, #2c64f0, #1d49cb);
+.toggle-button--switch {
+  position: relative;
+  justify-content: flex-start;
+  width: 68px;
+  min-width: 68px;
+  min-height: 32px;
+  padding: 2px;
+  border: 0;
+  border-radius: 999px;
+  background: #d7d9de;
+  overflow: hidden;
+}
+
+.toggle-button--switch span:first-child {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(26, 55, 119, 0.12);
+  transform: translateX(0);
+  transition: transform 180ms ease, background-color 180ms ease;
+}
+
+.toggle-button--switch.toggle-button--on {
+  background: #2554e8;
+}
+
+.toggle-button--switch.toggle-button--on span:first-child {
+  transform: translateX(36px);
+  background: #ffffff;
 }
 
 .toggle-button:disabled {
@@ -851,6 +969,7 @@ textarea::placeholder {
   gap: 16px;
   margin-top: auto;
   align-items: end;
+  padding: 0 22px 22px;
 }
 
 .active-card-footer-actions {
