@@ -5,7 +5,7 @@
       "crm": ["people", "tasks", "calendar", "segments"],
       "sales": ["showing", "offers", "transactions"],
       "content": ["my-listings", "websites", "landing-pages"],
-      "automation": ["smart-plans", "email-automation", "text-automation", "workflows", "property-alerts", "ai-workflows"],
+      "automation": ["smart-plans"],
       "reporting": ["business-summary", "agent-performance", "source-performance", "activity-metrics", "site-traffic", "email-accountability"]
     }
   },
@@ -15,7 +15,7 @@
       "crm": ["people", "tasks", "calendar", "segments"],
       "sales": ["showing", "offers", "transactions"],
       "content": ["my-listings", "websites", "landing-pages"],
-      "automation": ["smart-plans", "email-automation", "text-automation", "workflows", "property-alerts", "ai-workflows"],
+      "automation": ["smart-plans"],
       "reporting": ["business-summary", "agent-performance", "source-performance", "activity-metrics", "site-traffic", "email-accountability"]
     }
   },
@@ -25,7 +25,7 @@
       "crm": ["people", "tasks", "calendar", "segments"],
       "sales": ["showing", "offers", "transactions"],
       "content": ["my-listings", "websites", "landing-pages"],
-      "automation": ["smart-plans", "email-automation", "text-automation", "workflows", "property-alerts", "ai-workflows"],
+      "automation": ["smart-plans"],
       "reporting": ["business-summary", "agent-performance", "source-performance", "activity-metrics", "site-traffic", "email-accountability"]
     }
   },
@@ -35,16 +35,17 @@
       "crm": ["people", "tasks", "calendar", "segments"],
       "sales": ["showing", "transactions"],
       "content": ["my-listings", "websites", "landing-pages"],
-      "automation": ["smart-plans", "email-automation", "text-automation", "workflows", "property-alerts", "ai-workflows"],
+      "automation": ["smart-plans"],
       "reporting": ["business-summary", "agent-performance", "source-performance", "activity-metrics", "site-traffic", "email-accountability"]
     }
   },
   "agent-user": {
-    "builtCards": ["crm", "sales", "content"],
+    "builtCards": ["crm", "sales", "content", "automation"],
     "enabledSubfeatures": {
       "crm": ["people", "tasks", "segments", "calendar"],
       "sales": ["showing", "transactions"],
-      "content": ["my-listings", "websites", "landing-pages"]
+      "content": ["my-listings", "websites", "landing-pages"],
+      "automation": ["smart-plans"]
     }
   },
   "lender": {

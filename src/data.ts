@@ -623,7 +623,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
     label: "Automation",
     description: "Smart plans, workflows, alerts, and follow-up automation.",
     allowedRoles: nonLenderRoles,
-    requiredFor: ["company-owner", "company-admin", "office-owner", "office-admin"],
+    requiredFor: nonLenderRoles,
     icon: Sparkles,
     whatItDoes: "Automates follow-up so the team does not have to manage every step manually.",
     whyItMatters: "Automation is how Lofty keeps the database moving even when no one is online.",
@@ -635,7 +635,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "Smart Plans",
         "Builds saved follow-up plans for consistent outreach.",
         nonLenderRoles,
-        ["company-owner", "company-admin", "office-owner", "office-admin", "agent-user"],
+        nonLenderRoles,
         [
           selectField("planTemplate", "Plan template", ["New lead nurture", "Seller follow-up", "Sphere touch"], "Choose the first plan template.", "New lead nurture"),
           selectField("planOwner", "Plan owner", ["Personal", "Team", "Office"], "Choose who this plan belongs to.", "Personal")
@@ -649,7 +649,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "Email Automation",
         "Automates email sends inside your follow-up workflows.",
         nonLenderRoles,
-        ownerAndAdminRoles.concat(["agent-user"]),
+        [],
         [
           selectField("emailSeries", "Email series", ["Welcome series", "Open house follow-up", "Buyer nurture"], "Choose the first email sequence.", "Welcome series")
         ],
@@ -662,7 +662,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "Text Automation",
         "Automates text touchpoints inside nurture workflows.",
         nonLenderRoles,
-        ownerAndAdminRoles.concat(["agent-user"]),
+        [],
         [
           selectField("textSeries", "Text series", ["Speed to lead", "Open house follow-up", "Long-term nurture"], "Choose the first text sequence.", "Speed to lead")
         ],
@@ -675,7 +675,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "Workflows",
         "Links triggers and actions into broader operational automations.",
         nonLenderRoles,
-        ownerAndAdminRoles,
+        [],
         [
           selectField("workflowTrigger", "Trigger", ["New lead", "Stage change", "Property saved"], "Choose the main trigger for the first workflow.", "New lead"),
           selectField("workflowAction", "Action", ["Assign task", "Send email", "Notify team"], "Choose the first automated action.", "Assign task")
@@ -689,7 +689,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "Property Alerts",
         "Sends saved search and property update alerts automatically.",
         nonLenderRoles,
-        ownerAndAdminRoles.concat(["agent-user"]),
+        [],
         [
           selectField("alertType", "Alert type", ["New listings", "Price changes", "Saved search matches"], "Choose the first property alert type.", "New listings")
         ],
@@ -702,7 +702,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "AI Workflows",
         "Adds AI-generated steps and recommendations into automations.",
         nonLenderRoles,
-        ["company-owner", "company-admin", "office-owner", "office-admin"],
+        [],
         [
           selectField("aiGoal", "AI workflow goal", ["Lead qualification", "Database cleanup", "Seller nurture"], "Choose where AI should help first.", "Lead qualification")
         ],
