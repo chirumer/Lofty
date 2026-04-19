@@ -115,7 +115,7 @@ import dialog2Image from "../dialog2.png";
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
 const COPILOT_STORAGE_KEY = "lofty-ai-copilots-panel-v1";
 const COPILOT_CLIENT_TIMEOUT_MS = 30000;
-const COPILOT_MIN_THINKING_MS = 1200;
+const COPILOT_MIN_THINKING_MS = 6000;
 
 type MlsFeedFormValues = {
   sourceName: string;
