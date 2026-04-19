@@ -34,6 +34,7 @@ import type {
   RoleId,
   SubfeatureDefinition
 } from "./types";
+import testUser from "./config/test-user.json";
 
 const allRoles: RoleId[] = [
   "company-owner",
@@ -226,7 +227,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         allRoles,
         [
           selectField("importSource", "Lead source", ["Website", "CSV import", "Partner leads", "Manual entry"], "Choose the first source you want to use.", "Website"),
-          textField("ownerRule", "Default owner or team", "This helps route people into the right workspace.", "James Carter"),
+          textField("ownerRule", "Default owner or team", "This helps route people into the right workspace.", testUser.name),
           toggleField("mergeDuplicates", "Merge duplicates", "Turn this on to auto-flag duplicate people records.", true)
         ],
         "Sets up the main lead database and ownership defaults.",
@@ -941,7 +942,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Facebook",
     stage: "New lead",
     score: 59,
-    assignedAgent: "Baylee Carter",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 9:12 AM",
     lastReply: "No reply yet",
     communicationSummary: "Last text sent 22 min ago",
@@ -966,7 +967,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Zillow",
     stage: "Engaged",
     score: 44,
-    assignedAgent: "James Holloway",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 11:40 AM",
     lastReply: "Yesterday · 6:10 PM",
     communicationSummary: "Last call connected for 8 min",
@@ -998,7 +999,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "YouTube",
     stage: "Active search",
     score: 43,
-    assignedAgent: "Baylee Carter",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 12:05 PM",
     lastReply: "Today · 8:45 AM",
     communicationSummary: "Email opened 2 times today",
@@ -1024,7 +1025,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Website",
     stage: "Nurture",
     score: 88,
-    assignedAgent: "Morgan Lee",
+    assignedAgent: testUser.name,
     lastTouch: "Yesterday · 4:20 PM",
     lastReply: "Yesterday · 4:28 PM",
     communicationSummary: "Email reply received on valuation follow-up",
@@ -1054,7 +1055,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Website",
     stage: "Showing requested",
     score: 81,
-    assignedAgent: "Jamie Brooks",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 9:30 AM",
     lastReply: "Today · 9:36 AM",
     communicationSummary: "Showing request confirmed by text",
@@ -1077,7 +1078,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Home valuation",
     stage: "Warm seller",
     score: 76,
-    assignedAgent: "James Holloway",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 3:10 PM",
     lastReply: "No reply yet",
     communicationSummary: "Call task created from valuation form",
@@ -1107,7 +1108,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Website",
     stage: "Re-engaged",
     score: 61,
-    assignedAgent: "Baylee Carter",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 11:05 AM",
     lastReply: "Today · 11:18 AM",
     communicationSummary: "Welcome-back text sent and clicked",
@@ -1130,7 +1131,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Website",
     stage: "Database nurture",
     score: 48,
-    assignedAgent: "Morgan Lee",
+    assignedAgent: testUser.name,
     lastTouch: "Yesterday · 2:00 PM",
     lastReply: "3 days ago",
     communicationSummary: "Last text sent in Spanish nurture flow",
