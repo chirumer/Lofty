@@ -1,0 +1,58 @@
+{
+  "company-owner": {
+    "builtCards": ["crm", "sales", "content", "automation", "reporting"],
+    "enabledSubfeatures": {
+      "crm": ["people", "tasks", "calendar", "segments"],
+      "sales": ["showing", "offers", "transactions"],
+      "content": ["my-listings", "websites", "landing-pages"],
+      "automation": ["smart-plans"],
+      "reporting": ["business-summary", "agent-performance", "source-performance", "activity-metrics", "site-traffic", "email-accountability"]
+    }
+  },
+  "company-admin": {
+    "builtCards": ["crm", "sales", "content", "automation", "reporting"],
+    "enabledSubfeatures": {
+      "crm": ["people", "tasks", "calendar", "segments"],
+      "sales": ["showing", "offers", "transactions"],
+      "content": ["my-listings", "websites", "landing-pages"],
+      "automation": ["smart-plans"],
+      "reporting": ["business-summary", "agent-performance", "source-performance", "activity-metrics", "site-traffic", "email-accountability"]
+    }
+  },
+  "office-owner": {
+    "builtCards": ["crm", "sales", "content", "automation", "reporting"],
+    "enabledSubfeatures": {
+      "crm": ["people", "tasks", "calendar", "segments"],
+      "sales": ["showing", "offers", "transactions"],
+      "content": ["my-listings", "websites", "landing-pages"],
+      "automation": ["smart-plans"],
+      "reporting": ["business-summary", "agent-performance", "source-performance", "activity-metrics", "site-traffic", "email-accountability"]
+    }
+  },
+  "office-admin": {
+    "builtCards": ["crm", "sales", "content", "automation", "reporting"],
+    "enabledSubfeatures": {
+      "crm": ["people", "tasks", "calendar", "segments"],
+      "sales": ["showing", "transactions"],
+      "content": ["my-listings", "websites", "landing-pages"],
+      "automation": ["smart-plans"],
+      "reporting": ["business-summary", "agent-performance", "source-performance", "activity-metrics", "site-traffic", "email-accountability"]
+    }
+  },
+  "agent-user": {
+    "builtCards": ["crm", "sales", "content", "automation"],
+    "enabledSubfeatures": {
+      "crm": ["people", "tasks", "segments", "calendar"],
+      "sales": ["showing", "transactions"],
+      "content": ["my-listings", "websites", "landing-pages"],
+      "automation": ["smart-plans"]
+    }
+  },
+  "lender": {
+    "builtCards": ["crm", "sales"],
+    "enabledSubfeatures": {
+      "crm": ["people", "tasks"],
+      "sales": ["transactions"]
+    }
+  }
+}

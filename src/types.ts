@@ -83,7 +83,30 @@ export interface PresetDefinition {
 export type PromptValues = Record<string, string | boolean>;
 export type PromptConfigStore = Record<string, PromptValues>;
 export type CardToggleStore = Record<string, boolean>;
-export type LaunchedShellView = "home" | "crm-people" | "messages" | "negotiation";
+export type LaunchedListingType = "mlx" | "pocket";
+export type LaunchedShellView =
+  | "home"
+  | "crm-people"
+  | "messages"
+  | "negotiation"
+  | "automation-smart-plans"
+  | "listings"
+  | "websites"
+  | "idx-builder";
+export type SmartPlanGuidePhase =
+  | "inactive"
+  | "index-create"
+  | "scope-modal"
+  | "builder-add-trigger"
+  | "trigger-list"
+  | "trigger-detail"
+  | "builder-add-populate-variable"
+  | "action-list-populate-variable"
+  | "action-detail-populate-variable"
+  | "builder-add-auto-email"
+  | "action-list-auto-email"
+  | "action-detail-auto-email"
+  | "completed";
 export type LeadTaskType = "Call" | "Text" | "Email" | "Other";
 export type AppointmentType = "Appointment" | "Showing";
 export type OpportunityType = "High Interest" | "Likely Seller" | "Back to Site";
@@ -158,6 +181,38 @@ export interface ListingInsight {
   trend?: string;
 }
 
+export interface LaunchedListing {
+  id: string;
+  type: LaunchedListingType;
+  sourceName: string;
+  agentId?: string;
+  referenceId?: string;
+  contactName?: string;
+  availability?: string;
+  headline: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  price: number;
+  bedrooms: number;
+  bathrooms: number;
+  squareFeet: number;
+  neighborhood: string;
+  trend: string;
+  imageUrl: string;
+  description: string;
+  enabled: boolean;
+}
+
+export interface LaunchedMlsFeed {
+  id: string;
+  sourceName: string;
+  agentId: string;
+  referenceId: string;
+  enabled: boolean;
+}
+
 export interface HotSheetItem {
   id: string;
   label: string;
@@ -179,4 +234,21 @@ export interface OnboardingSnapshot {
   templatePreset: string | null;
   pendingPrompt: PromptTarget | null;
   launchReady: boolean;
+  launchedMlsFeeds: LaunchedMlsFeed[];
+  launchedListings: LaunchedListing[];
+}
+
+export interface RoleDashboardPreferences {
+  builtCards: LibraryCardId[];
+  enabledSubfeatures: Partial<Record<LibraryCardId, string[]>>;
+  subfeatureConfigOverrides?: Partial<Record<LibraryCardId, PromptConfigStore>>;
+}
+
+export interface LaunchedNavItem {
+  label: string;
+  href?: string;
+  icon?: string;
+  isAi?: boolean;
+  view?: LaunchedShellView;
+  submenu?: LaunchedNavItem[];
 }

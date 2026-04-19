@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   closestCenter,
@@ -25,6 +25,7 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
+  ExternalLink,
   HelpCircle,
   LayoutGrid,
   Mail,
@@ -32,6 +33,7 @@ import {
   Layers3,
   Lock,
   Phone,
+  Plus,
   Rocket,
   Search,
   Settings2,
@@ -39,12 +41,17 @@ import {
   X
 } from "lucide-react";
 import {
+  buildAutoselectedCardStates,
+  buildAutoselectedConfigStore,
+  buildAutoselectedToggleStore,
   buildInitialCardStates,
   buildInitialConfigStore,
   buildInitialToggleStore,
+  buildLaunchedNavItems,
   buildPromptDefaults,
   dashboardUpdates,
   deriveLaunchReady,
+  formatListingLocation,
   getAccessibleCards,
   getCardById,
   getDashboardPeopleForRole,
@@ -54,7 +61,6 @@ import {
   hotSheetItems,
   isCardRequiredForRole,
   libraryCardDefinitions,
-  listingInsights,
   roleDefinitions,
   roleSelectionCopy
 } from "./data";
@@ -62,6 +68,9 @@ import type {
   CardState,
   CardToggleStore,
   DashboardPerson,
+  LaunchedListing,
+  LaunchedMlsFeed,
+  LaunchedListingType,
   LaunchedShellView,
   LeadViewId,
   LibraryCardDefinition,
@@ -70,9 +79,12 @@ import type {
   PromptValues,
   RoleDefinition,
   RoleId,
+  SmartPlanGuidePhase,
   SubfeatureDefinition
 } from "./types";
+import AICopilotsPanel from "./components/AICopilotsPanel";
 import LoftyLaunchedShell from "./components/LoftyLaunchedShell";
+import SmartPlansWorkspace from "./components/SmartPlansWorkspace";
 import {
   getProfileOption,
   MessagesWorkspace,
@@ -81,9 +93,98 @@ import {
   ProfileSwitchModal,
   useNegotiationFeatureState
 } from "./components/NegotiationFeatureViews";
+import {
+  buildIdxBuilderStarterPrompt,
+  getDefaultCopilotModelId,
+  matchesSmartPlanHelpPrompt,
+  isCopilotModelId,
+  SMART_PLAN_GUIDE_ACTION,
+  SMART_PLAN_GUIDE_RESPONSE,
+  type CopilotChatMessage,
+  type CopilotChatResponse,
+  type CopilotModelId
+} from "@/lib/ai-copilots";
 import { DEMO_LISTING_ID } from "@/lib/constants";
+import { formatCurrency } from "@/lib/utils";
+import testUser from "./config/test-user.json";
+import demoMlxListings from "./config/demo-mlx-listings.json";
+import demoPocketListings from "./config/demo-pocket-listings.json";
+import dialog1Image from "../dialog1.png";
+import dialog2Image from "../dialog2.png";
 
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
+const COPILOT_STORAGE_KEY = "lofty-ai-copilots-panel-v1";
+const COPILOT_CLIENT_TIMEOUT_MS = 30000;
+const COPILOT_MIN_THINKING_MS = 1200;
+
+type MlsFeedFormValues = {
+  sourceName: string;
+  agentId: string;
+  referenceId: string;
+  enabled: boolean;
+};
+
+type PocketListingFormValues = {
+  sourceName: string;
+  contactName: string;
+  availability: string;
+  headline: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  price: string;
+  bedrooms: string;
+  bathrooms: string;
+  squareFeet: string;
+  neighborhood: string;
+  trend: string;
+  imageUrl: string;
+  description: string;
+  enabled: boolean;
+};
+
+type ContentEditorState =
+  | {
+      mode: "create" | "edit";
+      kind: "mls-feed";
+      feedId?: string;
+    }
+  | {
+      mode: "create" | "edit";
+      kind: "pocket-listing";
+      listingId?: string;
+    }
+  | null;
+
+type WebsiteGuideStep = "idle" | "blocked" | "highlight-listings";
+
+const emptyMlsFeedFormValues: MlsFeedFormValues = {
+  sourceName: "",
+  agentId: "",
+  referenceId: "",
+  enabled: true
+};
+
+const emptyPocketListingFormValues: PocketListingFormValues = {
+  sourceName: "",
+  contactName: "",
+  availability: "",
+  headline: "",
+  address: "",
+  city: "",
+  state: "AZ",
+  zip: "",
+  price: "",
+  bedrooms: "",
+  bathrooms: "",
+  squareFeet: "",
+  neighborhood: "",
+  trend: "",
+  imageUrl: "",
+  description: "",
+  enabled: true
+};
 
 const emptySnapshot: OnboardingSnapshot = {
   selectedRole: null,
@@ -94,13 +195,33 @@ const emptySnapshot: OnboardingSnapshot = {
   phase: "role-selection",
   templatePreset: null,
   pendingPrompt: null,
-  launchReady: false
+  launchReady: false,
+  launchedMlsFeeds: [],
+  launchedListings: []
 };
 
 function normalizeSnapshot(snapshot: OnboardingSnapshot): OnboardingSnapshot {
-  return {
+  const launchedListings = snapshot.launchedListings ?? [];
+  const migratedSnapshot: OnboardingSnapshot = {
     ...snapshot,
-    launchReady: deriveLaunchReady(snapshot)
+    launchedMlsFeeds:
+      snapshot.launchedMlsFeeds && snapshot.launchedMlsFeeds.length
+        ? snapshot.launchedMlsFeeds
+        : launchedListings
+            .filter((listing) => listing.type === "mlx")
+            .map((listing) => ({
+              id: listing.id,
+              sourceName: listing.sourceName,
+              agentId: listing.agentId ?? "",
+              referenceId: listing.referenceId ?? "",
+              enabled: listing.enabled
+            })),
+    launchedListings: launchedListings.filter((listing) => listing.type === "pocket")
+  };
+
+  return {
+    ...migratedSnapshot,
+    launchReady: deriveLaunchReady(migratedSnapshot)
   };
 }
 
@@ -114,6 +235,223 @@ function loadSnapshot(): OnboardingSnapshot {
   } catch {
     return emptySnapshot;
   }
+}
+
+function buildMlsFeedFormValues(feed?: LaunchedMlsFeed): MlsFeedFormValues {
+  if (feed) {
+    return {
+      sourceName: feed.sourceName,
+      agentId: feed.agentId,
+      referenceId: feed.referenceId,
+      enabled: feed.enabled
+    };
+  }
+
+  return {
+    ...emptyMlsFeedFormValues,
+    sourceName: "Phoenix Valley MLS"
+  };
+}
+
+function buildPocketListingFormValues(listing?: LaunchedListing): PocketListingFormValues {
+  if (listing) {
+    return {
+      sourceName: listing.sourceName,
+      contactName: listing.contactName ?? "",
+      availability: listing.availability ?? "",
+      headline: listing.headline,
+      address: listing.address,
+      city: listing.city,
+      state: listing.state,
+      zip: listing.zip,
+      price: String(listing.price),
+      bedrooms: String(listing.bedrooms),
+      bathrooms: String(listing.bathrooms),
+      squareFeet: String(listing.squareFeet),
+      neighborhood: listing.neighborhood,
+      trend: listing.trend,
+      imageUrl: listing.imageUrl,
+      description: listing.description,
+      enabled: listing.enabled
+    };
+  }
+
+  return {
+    ...emptyPocketListingFormValues,
+    sourceName: "Private Client Circle"
+  };
+}
+
+function createMlsFeedId() {
+  return `mlx-feed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createPocketListingId() {
+  return `pocket-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildMlsFeedFromForm(values: MlsFeedFormValues, existingFeedId?: string): LaunchedMlsFeed {
+  return {
+    id: existingFeedId ?? createMlsFeedId(),
+    sourceName: values.sourceName.trim(),
+    agentId: values.agentId.trim(),
+    referenceId: values.referenceId.trim(),
+    enabled: values.enabled
+  };
+}
+
+function buildPocketListingFromForm(values: PocketListingFormValues, existingListingId?: string): LaunchedListing {
+  return {
+    id: existingListingId ?? createPocketListingId(),
+    type: "pocket",
+    sourceName: values.sourceName.trim(),
+    contactName: values.contactName.trim() || undefined,
+    availability: values.availability.trim() || undefined,
+    headline: values.headline.trim(),
+    address: values.address.trim(),
+    city: values.city.trim(),
+    state: values.state.trim().toUpperCase(),
+    zip: values.zip.trim(),
+    price: Number(values.price),
+    bedrooms: Number(values.bedrooms),
+    bathrooms: Number(values.bathrooms),
+    squareFeet: Number(values.squareFeet),
+    neighborhood: values.neighborhood.trim(),
+    trend: values.trend.trim(),
+    imageUrl: values.imageUrl.trim(),
+    description: values.description.trim(),
+    enabled: values.enabled
+  };
+}
+
+function getDemoMlsFeedFormValues(existingCount: number): MlsFeedFormValues {
+  const demoListing = demoMlxListings[existingCount % demoMlxListings.length];
+  return {
+    ...emptyMlsFeedFormValues,
+    sourceName: demoListing.sourceName.replace("MLX", "MLS"),
+    agentId: demoListing.agentId ?? "",
+    referenceId: demoListing.referenceId ?? "",
+    enabled: true
+  };
+}
+
+function getDemoPocketListingFormValues(existingCount: number): PocketListingFormValues {
+  const demoListing = demoPocketListings[existingCount % demoPocketListings.length];
+
+  return {
+    ...emptyPocketListingFormValues,
+    ...demoListing,
+    price: String(demoListing.price),
+    bedrooms: String(demoListing.bedrooms),
+    bathrooms: String(demoListing.bathrooms),
+    squareFeet: String(demoListing.squareFeet),
+    enabled: true
+  };
+}
+
+function getListingTypeLabel(listingType: LaunchedListingType) {
+  return listingType === "mlx" ? "MLS feed" : "Pocket listing";
+}
+
+function validateMlsFeedForm(values: MlsFeedFormValues) {
+  const requiredFields = [
+    ["sourceName", values.sourceName],
+    ["agentId", values.agentId],
+    ["referenceId", values.referenceId]
+  ];
+
+  return requiredFields.every(([, value]) => String(value ?? "").trim() !== "");
+}
+
+function validatePocketListingForm(values: PocketListingFormValues) {
+  const requiredFields = [
+    ["sourceName", values.sourceName],
+    ["contactName", values.contactName],
+    ["availability", values.availability],
+    ["headline", values.headline],
+    ["address", values.address],
+    ["city", values.city],
+    ["state", values.state],
+    ["zip", values.zip],
+    ["price", values.price],
+    ["bedrooms", values.bedrooms],
+    ["bathrooms", values.bathrooms],
+    ["squareFeet", values.squareFeet],
+    ["neighborhood", values.neighborhood],
+    ["trend", values.trend],
+    ["imageUrl", values.imageUrl],
+    ["description", values.description]
+  ];
+
+  return requiredFields.every(([, value]) => String(value ?? "").trim() !== "");
+}
+
+function deriveListingsFromMlsFeeds(feeds: LaunchedMlsFeed[]): LaunchedListing[] {
+  return feeds.map((feed, index) => {
+    const demoListing = demoMlxListings[index % demoMlxListings.length];
+
+    return {
+      ...demoListing,
+      id: `mlx-derived-${feed.id}`,
+      type: "mlx",
+      sourceName: feed.sourceName,
+      agentId: feed.agentId,
+      referenceId: feed.referenceId,
+      enabled: feed.enabled
+    };
+  });
+}
+
+function createBuilderSnapshot(roleId: RoleId, mode: "empty" | "auto"): OnboardingSnapshot {
+  return normalizeSnapshot({
+    ...emptySnapshot,
+    selectedRole: roleId,
+    cardStates: mode === "auto" ? buildAutoselectedCardStates(roleId) : buildInitialCardStates(),
+    subfeatureToggles: mode === "auto" ? buildAutoselectedToggleStore(roleId) : buildInitialToggleStore(roleId),
+    subfeatureConfigs: mode === "auto" ? buildAutoselectedConfigStore(roleId) : buildInitialConfigStore(roleId),
+    phase: "builder"
+  });
+}
+
+function createCopilotMessage(
+  role: CopilotChatMessage["role"],
+  content: string,
+  action?: CopilotChatMessage["action"]
+): CopilotChatMessage {
+  return {
+    id: `copilot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    content: content.trim(),
+    createdAt: new Date().toISOString(),
+    action
+  };
+}
+
+function waitForMinimumDuration(startedAt: number, durationMs: number) {
+  const remainingMs = durationMs - (Date.now() - startedAt);
+  if (remainingMs <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, remainingMs);
+  });
+}
+
+function isCopilotChatMessage(value: unknown): value is CopilotChatMessage {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<CopilotChatMessage>;
+  return (
+    typeof candidate.id === "string" &&
+    (candidate.role === "user" || candidate.role === "assistant") &&
+    typeof candidate.content === "string" &&
+    typeof candidate.createdAt === "string" &&
+    (typeof candidate.action === "undefined" ||
+      (candidate.action.kind === "smart-plan-guide" && typeof candidate.action.label === "string"))
+  );
 }
 
 function getCardReadiness(snapshot: OnboardingSnapshot, card: LibraryCardDefinition, roleId: RoleId) {
@@ -166,8 +504,7 @@ function App() {
   const [promptValues, setPromptValues] = useState<PromptValues>({});
 
   useEffect(() => {
-    setSnapshot(emptySnapshot);
-    window.localStorage.removeItem(STORAGE_KEY);
+    setSnapshot(loadSnapshot());
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setHasHydrated(true);
   }, []);
@@ -251,14 +588,7 @@ function App() {
   }
 
   function handleRoleSelect(role: RoleDefinition) {
-    updateSnapshot(() => ({
-      ...emptySnapshot,
-      selectedRole: role.id,
-      cardStates: buildInitialCardStates(),
-      subfeatureToggles: buildInitialToggleStore(role.id),
-      subfeatureConfigs: buildInitialConfigStore(role.id),
-      phase: "builder"
-    }));
+    setSnapshot(createBuilderSnapshot(role.id, "auto"));
     setSelectedCardId(null);
     setSelectedSubfeatureId(null);
     setCardQuery("");
@@ -417,6 +747,33 @@ function App() {
     window.localStorage.removeItem(STORAGE_KEY);
   }
 
+  function resetSelections() {
+    if (!snapshot.selectedRole) {
+      return;
+    }
+    setSnapshot(createBuilderSnapshot(snapshot.selectedRole, "empty"));
+    setSelectedCardId(null);
+    setSelectedSubfeatureId(null);
+    setCardQuery("");
+    setMobileLibraryOpen(false);
+    setShowLaunchConfirm(false);
+    setPromptValues({});
+    window.localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function autoBuildSelections() {
+    if (!snapshot.selectedRole) {
+      return;
+    }
+    setSnapshot(createBuilderSnapshot(snapshot.selectedRole, "auto"));
+    setSelectedCardId(null);
+    setSelectedSubfeatureId(null);
+    setCardQuery("");
+    setMobileLibraryOpen(false);
+    setShowLaunchConfirm(false);
+    setPromptValues({});
+  }
+
   function handleDragStart(event: DragStartEvent) {
     const activeId = String(event.active.id);
     if (activeId.startsWith("library:")) {
@@ -453,6 +810,7 @@ function App() {
             optionalCardsRemaining={optionalCardsRemaining}
             snapshot={snapshot}
             onReset={resetBuilder}
+            onUpdateSnapshot={updateSnapshot}
           />
         </main>
       </div>
@@ -484,6 +842,12 @@ function App() {
               <h1>Build your platform</h1>
             </div>
             <div className="builder-header-actions">
+              <button className="secondary-button" onClick={resetSelections}>
+                Reset selections
+              </button>
+              <button className="secondary-button" onClick={autoBuildSelections}>
+                Auto build
+              </button>
               <button className="secondary-button" onClick={resetBuilder}>
                 Back to role selection
               </button>
@@ -1172,13 +1536,15 @@ function LaunchSuccessScreen({
   builtCards,
   optionalCardsRemaining,
   snapshot,
-  onReset
+  onReset,
+  onUpdateSnapshot
 }: {
   role: RoleDefinition;
   builtCards: LibraryCardDefinition[];
   optionalCardsRemaining: LibraryCardDefinition[];
   snapshot: OnboardingSnapshot;
   onReset: () => void;
+  onUpdateSnapshot: (updater: (current: OnboardingSnapshot) => OnboardingSnapshot) => void;
 }) {
   const launchedCards = builtCards
     .map((card) => ({
@@ -1186,28 +1552,29 @@ function LaunchSuccessScreen({
       enabledSubfeatures: card.subfeatures.filter((subfeature) => snapshot.subfeatureToggles[card.id]?.[subfeature.id])
     }))
     .filter((item) => item.enabledSubfeatures.length > 0);
+  const launchedNavItems = useMemo(() => buildLaunchedNavItems(launchedCards), [launchedCards]);
 
   const [activeView, setActiveView] = useState<LaunchedShellView>("home");
   const [peopleViewId, setPeopleViewId] = useState<LeadViewId>("all-leads");
   const [activeDemoProfile, setActiveDemoProfile] = useState<NegotiationShellProfile>("seller_agent");
   const [showProfileSwitch, setShowProfileSwitch] = useState(false);
+  const [contentEditor, setContentEditor] = useState<ContentEditorState>(null);
+  const [showIdxPreview, setShowIdxPreview] = useState(false);
+  const [websiteGuideStep, setWebsiteGuideStep] = useState<WebsiteGuideStep>("idle");
+  const [copilotSelectedModelId, setCopilotSelectedModelId] = useState<CopilotModelId>(getDefaultCopilotModelId());
+  const [copilotMessages, setCopilotMessages] = useState<CopilotChatMessage[]>([]);
+  const [copilotDraft, setCopilotDraft] = useState("");
+  const [copilotIsSending, setCopilotIsSending] = useState(false);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [copilotHydrated, setCopilotHydrated] = useState(false);
+  const [smartPlanGuidePhase, setSmartPlanGuidePhase] = useState<SmartPlanGuidePhase>("inactive");
+  const copilotRequestIdRef = useRef(0);
   const negotiationFeature = useNegotiationFeatureState(DEMO_LISTING_ID);
 
   const people = useMemo(() => getDashboardPeopleForRole(role.id), [role.id]);
   const peopleViewItems = getPeopleViewList(peopleViewId, role.id);
   const activeDemoAccount = getProfileOption(activeDemoProfile);
-  const greetingName =
-    role.id === "company-owner"
-      ? "James"
-      : role.id === "company-admin"
-        ? "Baylee"
-        : role.id === "office-owner"
-          ? "Jamie"
-          : role.id === "office-admin"
-            ? "Morgan"
-            : role.id === "lender"
-              ? "Taylor"
-              : "Baylee";
+  const greetingName = testUser.name;
   const hour = new Date().getHours();
   const greetingLabel = hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening";
 
@@ -1257,10 +1624,24 @@ function LaunchSuccessScreen({
         : []
     )
     .slice(0, 4);
-  const myListings = listingInsights.slice(0, 3);
   const launchedSubfeatureIds = new Set(
     launchedCards.flatMap(({ enabledSubfeatures }) => enabledSubfeatures.map((subfeature) => subfeature.id))
   );
+  const enabledFeatureNames = Array.from(
+    new Set(launchedCards.flatMap(({ enabledSubfeatures }) => enabledSubfeatures.map((subfeature) => subfeature.name)))
+  );
+  const launchedMlsFeeds = snapshot.launchedMlsFeeds ?? [];
+  const launchedPocketListings = snapshot.launchedListings ?? [];
+  const derivedMlsListings = useMemo(() => deriveListingsFromMlsFeeds(launchedMlsFeeds), [launchedMlsFeeds]);
+  const enabledListings = [
+    ...derivedMlsListings.filter((listing) => listing.enabled),
+    ...launchedPocketListings.filter((listing) => listing.enabled)
+  ];
+  const websiteBuildingConfig = snapshot.subfeatureConfigs["ai-copilots"]?.["website-building-agent"] ?? {};
+  const siteGoal = typeof websiteBuildingConfig.siteGoal === "string" ? websiteBuildingConfig.siteGoal : undefined;
+  const marketFocus = typeof websiteBuildingConfig.marketFocus === "string" ? websiteBuildingConfig.marketFocus : undefined;
+  const canOpenListings = launchedSubfeatureIds.has("my-listings");
+  const canOpenWebsites = launchedSubfeatureIds.has("websites");
   const widgetAvailability = {
     newLeads: launchedSubfeatureIds.has("people"),
     opportunities:
@@ -1271,19 +1652,336 @@ function LaunchSuccessScreen({
     transactions: launchedSubfeatureIds.has("transactions"),
     tasks: launchedSubfeatureIds.has("tasks"),
     appointments: launchedSubfeatureIds.has("calendar") || launchedSubfeatureIds.has("showing"),
-    listings: launchedSubfeatureIds.has("websites"),
+    listings: canOpenListings,
     hotSheets: launchedSubfeatureIds.has("websites")
   };
+
+  const copilotContext = useMemo(
+    () => ({
+      activeView,
+      roleName: role.name,
+      enabledFeatures: enabledFeatureNames,
+      siteGoal,
+      marketFocus,
+      enabledListings:
+        activeView === "idx-builder"
+          ? enabledListings.map((listing) => ({
+              id: listing.id,
+              type: getListingTypeLabel(listing.type),
+              headline: listing.headline,
+              address: listing.address,
+              city: listing.city,
+              state: listing.state,
+              price: listing.price,
+              bedrooms: listing.bedrooms,
+              bathrooms: listing.bathrooms,
+              squareFeet: listing.squareFeet,
+              neighborhood: listing.neighborhood
+            }))
+          : undefined
+    }),
+    [activeView, enabledFeatureNames, enabledListings, marketFocus, role.name, siteGoal]
+  );
 
   useEffect(() => {
     if (activeView === "crm-people" && !launchedSubfeatureIds.has("people")) {
       setActiveView("home");
     }
+    if (activeView === "automation-smart-plans" && !launchedSubfeatureIds.has("smart-plans")) {
+      setActiveView("home");
+    }
   }, [activeView, launchedSubfeatureIds]);
+
+  useEffect(() => {
+    if (activeView === "listings" && !canOpenListings) {
+      setActiveView("home");
+    }
+    if ((activeView === "websites" || activeView === "idx-builder") && !canOpenWebsites) {
+      setActiveView("home");
+    }
+  }, [activeView, canOpenListings, canOpenWebsites]);
+
+  useEffect(() => {
+    if (activeView !== "websites" && websiteGuideStep !== "idle") {
+      setWebsiteGuideStep("idle");
+    }
+  }, [activeView, websiteGuideStep]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COPILOT_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as {
+        selectedModelId?: string;
+        messages?: unknown[];
+        draft?: string;
+      };
+
+      if (parsed.selectedModelId && isCopilotModelId(parsed.selectedModelId)) {
+        setCopilotSelectedModelId(parsed.selectedModelId);
+      }
+
+      if (Array.isArray(parsed.messages)) {
+        setCopilotMessages(parsed.messages.filter(isCopilotChatMessage));
+      }
+
+      if (typeof parsed.draft === "string") {
+        setCopilotDraft(parsed.draft);
+      }
+    } catch {
+      window.localStorage.removeItem(COPILOT_STORAGE_KEY);
+    } finally {
+      setCopilotHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!copilotHydrated) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      COPILOT_STORAGE_KEY,
+      JSON.stringify({
+        selectedModelId: copilotSelectedModelId,
+        messages: copilotMessages,
+        draft: copilotDraft
+      })
+    );
+  }, [copilotDraft, copilotHydrated, copilotMessages, copilotSelectedModelId]);
+
+  function updateLaunchedMlsFeeds(updater: (current: LaunchedMlsFeed[]) => LaunchedMlsFeed[]) {
+    onUpdateSnapshot((current) => ({
+      ...current,
+      launchedMlsFeeds: updater(current.launchedMlsFeeds ?? [])
+    }));
+  }
+
+  function updatePocketListings(updater: (current: LaunchedListing[]) => LaunchedListing[]) {
+    onUpdateSnapshot((current) => ({
+      ...current,
+      launchedListings: updater(current.launchedListings ?? [])
+    }));
+  }
+
+  function handleSaveMlsFeed(nextFeed: LaunchedMlsFeed) {
+    updateLaunchedMlsFeeds((current) => {
+      const existingIndex = current.findIndex((feed) => feed.id === nextFeed.id);
+      if (existingIndex === -1) {
+        return [nextFeed, ...current];
+      }
+      const updatedFeeds = [...current];
+      updatedFeeds[existingIndex] = nextFeed;
+      return updatedFeeds;
+    });
+    setContentEditor(null);
+  }
+
+  function handleToggleMlsFeed(feedId: string, enabled: boolean) {
+    updateLaunchedMlsFeeds((current) =>
+      current.map((feed) => (feed.id === feedId ? { ...feed, enabled } : feed))
+    );
+  }
+
+  function handleSavePocketListing(nextListing: LaunchedListing) {
+    updatePocketListings((current) => {
+      const existingIndex = current.findIndex((listing) => listing.id === nextListing.id);
+      if (existingIndex === -1) {
+        return [nextListing, ...current];
+      }
+      const updatedListings = [...current];
+      updatedListings[existingIndex] = nextListing;
+      return updatedListings;
+    });
+    setContentEditor(null);
+  }
+
+  function handleTogglePocketListing(listingId: string, enabled: boolean) {
+    updatePocketListings((current) =>
+      current.map((listing) => (listing.id === listingId ? { ...listing, enabled } : listing))
+    );
+  }
+
+  function handleCreateIdxWebsite() {
+    if (enabledListings.length === 0) {
+      setWebsiteGuideStep("blocked");
+      return;
+    }
+    setShowIdxPreview(true);
+  }
+
+  function handleConfirmIdxPreview() {
+    setShowIdxPreview(false);
+    setWebsiteGuideStep("idle");
+    setActiveView("idx-builder");
+  }
 
   function handleSelectDemoProfile(profile: NegotiationShellProfile) {
     setActiveDemoProfile(profile);
     setShowProfileSwitch(false);
+  }
+
+  async function sendCopilotMessage(promptOverride?: string) {
+    const nextPrompt = (promptOverride ?? copilotDraft).trim();
+    if (!nextPrompt || copilotIsSending) {
+      return;
+    }
+
+    const requestStartedAt = Date.now();
+    const requestId = copilotRequestIdRef.current + 1;
+    copilotRequestIdRef.current = requestId;
+    const userMessage = createCopilotMessage("user", nextPrompt);
+    const nextMessages = [...copilotMessages, userMessage];
+
+    setCopilotMessages(nextMessages);
+    setCopilotError(null);
+    setCopilotIsSending(true);
+
+    if (!promptOverride) {
+      setCopilotDraft("");
+    }
+
+    if (matchesSmartPlanHelpPrompt(nextPrompt)) {
+      await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      setCopilotMessages([
+        ...nextMessages,
+        createCopilotMessage("assistant", SMART_PLAN_GUIDE_RESPONSE, SMART_PLAN_GUIDE_ACTION)
+      ]);
+      setCopilotIsSending(false);
+      return;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), COPILOT_CLIENT_TIMEOUT_MS);
+      const response = await fetch("/api/ai-copilots/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          modelId: copilotSelectedModelId,
+          messages: nextMessages,
+          context: copilotContext
+        })
+      }).finally(() => {
+        window.clearTimeout(timeoutId);
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as CopilotChatResponse;
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      if (!response.ok || !payload.message) {
+        await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+        if (requestId !== copilotRequestIdRef.current) {
+          return;
+        }
+
+        if (!promptOverride) {
+          setCopilotDraft(nextPrompt);
+        }
+        setCopilotError(payload.error ?? "AI Copilots could not respond right now. Please try again.");
+        return;
+      }
+
+      await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      setCopilotMessages([...nextMessages, payload.message]);
+    } catch (error) {
+      await waitForMinimumDuration(requestStartedAt, COPILOT_MIN_THINKING_MS);
+
+      if (requestId !== copilotRequestIdRef.current) {
+        return;
+      }
+
+      if (!promptOverride) {
+        setCopilotDraft(nextPrompt);
+      }
+
+      if (error instanceof Error && error.name === "AbortError") {
+        setCopilotError("AI Copilots timed out waiting for the server. Please try again.");
+        return;
+      }
+
+      const fallbackMessage =
+        error instanceof Error && error.message
+          ? `AI Copilots could not reach the Lofty AI service (${error.message}).`
+          : "AI Copilots could not reach the Lofty AI service.";
+
+      setCopilotError(`${fallbackMessage} Please check the app connection and try again.`);
+    } finally {
+      if (requestId === copilotRequestIdRef.current) {
+        setCopilotIsSending(false);
+      }
+    }
+  }
+
+  function handleStartBuildingPrompt() {
+    const starterPrompt = buildIdxBuilderStarterPrompt({
+      siteGoal,
+      marketFocus,
+      listings: enabledListings.map((listing) => ({
+        id: listing.id,
+        type: getListingTypeLabel(listing.type),
+        headline: listing.headline,
+        address: listing.address,
+        city: listing.city,
+        state: listing.state,
+        price: listing.price,
+        bedrooms: listing.bedrooms,
+        bathrooms: listing.bathrooms,
+        squareFeet: listing.squareFeet,
+        neighborhood: listing.neighborhood
+      }))
+    });
+
+    void sendCopilotMessage(starterPrompt);
+  }
+
+  function handleCopilotMessageAction(actionKind: NonNullable<CopilotChatMessage["action"]>["kind"]) {
+    if (actionKind !== "smart-plan-guide") {
+      return;
+    }
+
+    if (!launchedSubfeatureIds.has("smart-plans")) {
+      setCopilotMessages((current) => [
+        ...current,
+        createCopilotMessage(
+          "assistant",
+          "Smart Plans is not available in this launched workspace yet, so I can't open the guided automation setup here."
+        )
+      ]);
+      return;
+    }
+
+    setActiveView("automation-smart-plans");
+    setSmartPlanGuidePhase((current) => (current === "inactive" || current === "completed" ? "index-create" : current));
+  }
+
+  function handleClearCopilotChat() {
+    copilotRequestIdRef.current += 1;
+    setCopilotMessages([]);
+    setCopilotDraft("");
+    setCopilotError(null);
+    setCopilotIsSending(false);
+    setSmartPlanGuidePhase("inactive");
   }
 
   return (
@@ -1292,63 +1990,120 @@ function LaunchSuccessScreen({
         activeView={activeView}
         activeProfileEmail={activeDemoAccount.email}
         activeProfileName={activeDemoAccount.name}
+        headerItems={launchedNavItems}
+        onStartAnotherSetup={onReset}
         onNavigateHome={() => setActiveView("home")}
         onNavigateMessages={() => setActiveView("messages")}
         onNavigateNegotiation={() => setActiveView("negotiation")}
         onNavigatePeople={() => setActiveView("crm-people")}
+        onNavigateSmartPlans={() => setActiveView("automation-smart-plans")}
+        onNavigateListings={() => {
+          setWebsiteGuideStep("idle");
+          setActiveView("listings");
+        }}
+        onNavigateWebsites={() => setActiveView("websites")}
         onOpenProfileSwitch={() => setShowProfileSwitch(true)}
+        forcedOpenMenu={websiteGuideStep === "highlight-listings" ? "Content" : null}
+        guidedSubmenuParentLabel={websiteGuideStep === "highlight-listings" ? "Content" : null}
+        highlightedSubmenuLabel={websiteGuideStep === "highlight-listings" ? "Listings" : null}
+        submenuGuide={
+          websiteGuideStep === "highlight-listings"
+            ? {
+                imageSrc: dialog2Image.src,
+                text: "Configure Listings here"
+              }
+            : null
+        }
+        forcedUtilityId={activeView === "idx-builder" ? "ai" : undefined}
+        utilityPanelOverride={{
+          itemId: "ai",
+          title: "AI Copilots",
+          content: (
+            <AICopilotsPanel
+              activeView={activeView}
+              draft={copilotDraft}
+              error={copilotError}
+              isSending={copilotIsSending}
+              messages={copilotMessages}
+              selectedModelId={copilotSelectedModelId}
+              enabledListingCount={enabledListings.length}
+              onDraftChange={(value) => {
+                setCopilotDraft(value);
+                if (copilotError) {
+                  setCopilotError(null);
+                }
+              }}
+              onModelChange={(modelId) => {
+                setCopilotSelectedModelId(modelId);
+                if (copilotError) {
+                  setCopilotError(null);
+                }
+              }}
+              onClearChat={handleClearCopilotChat}
+              onMessageAction={handleCopilotMessageAction}
+              onSend={() => void sendCopilotMessage()}
+              onStartBuilding={handleStartBuildingPrompt}
+            />
+          )
+        }}
+        shellGuidedOverlay={
+          websiteGuideStep === "blocked"
+            ? {
+                mode: "blocked",
+                onClick: () => setWebsiteGuideStep("highlight-listings"),
+                content: (
+                  <div className="mascot-callout mascot-callout--overlay">
+                    <img src={dialog1Image.src} alt="" aria-hidden="true" />
+                    <div className="mascot-callout__bubble">No Listings configured yet..</div>
+                  </div>
+                )
+              }
+            : null
+        }
       >
         {activeView === "home" ? (
-        <div className="lofty-shell-section">
-          <div className="dashboard-page">
-            <div className="dashboard-page-header">
-              <div>
-                <h1>
-                  👋 {greetingLabel}, {greetingName}!
-                </h1>
-                <div className="dashboard-subtitle-row">
-                  <span>My Dashboard</span>
-                  <ChevronDown size={14} />
+          <div className="lofty-shell-section">
+            <div className="dashboard-page">
+              <div className="dashboard-page-header">
+                <div>
+                  <h1>
+                    👋 {greetingLabel}, {greetingName}!
+                  </h1>
+                  <div className="dashboard-subtitle-row">
+                    <span>My Dashboard</span>
+                    <ChevronDown size={14} />
+                  </div>
+                </div>
+                <div className="dashboard-header-actions">
+                  <button className="dashboard-filter-chip">
+                    Today&apos;s Priorities
+                    <ChevronDown size={14} />
+                  </button>
+                  <button className="dashboard-grid-button" aria-label="Dashboard layout">
+                    <LayoutGrid size={16} />
+                  </button>
                 </div>
               </div>
-              <div className="dashboard-header-actions">
-                <button className="dashboard-filter-chip">
-                  Today&apos;s Priorities
-                  <ChevronDown size={14} />
-                </button>
-                <button className="dashboard-grid-button" aria-label="Dashboard layout">
-                  <LayoutGrid size={16} />
-                </button>
-                <button className="secondary-button" onClick={onReset}>
-                  Start another setup
-                </button>
-              </div>
-            </div>
 
-            <DashboardHome
-              updates={dashboardUpdates}
-              newLeads={newLeads}
-              keepInTouchLeads={keepInTouchLeads}
-              opportunityLeads={opportunityLeads}
-              opportunityCounts={opportunityCounts}
-              tasks={tasks}
-              taskCounts={taskCounts}
-              appointments={appointments}
-              showings={showings}
-              transactions={transactions}
-              listings={myListings}
-              hotSheets={hotSheetItems}
-              widgetAvailability={widgetAvailability}
-            />
+              <DashboardHome
+                updates={dashboardUpdates}
+                newLeads={newLeads}
+                keepInTouchLeads={keepInTouchLeads}
+                opportunityLeads={opportunityLeads}
+                opportunityCounts={opportunityCounts}
+                tasks={tasks}
+                taskCounts={taskCounts}
+                appointments={appointments}
+                showings={showings}
+                transactions={transactions}
+                listings={enabledListings}
+                hotSheets={hotSheetItems}
+                widgetAvailability={widgetAvailability}
+              />
+            </div>
           </div>
-        </div>
         ) : activeView === "crm-people" ? (
           <div className="lofty-shell-section">
-            <div className="lofty-shell-toolbar">
-              <button className="secondary-button" onClick={onReset}>
-                Start another setup
-              </button>
-            </div>
             <div className="dashboard-page">
               <PeopleWorkspace
                 role={role}
@@ -1364,12 +2119,41 @@ function LaunchSuccessScreen({
             feature={negotiationFeature}
             onOpenProfileSwitch={() => setShowProfileSwitch(true)}
           />
-        ) : (
+        ) : activeView === "negotiation" ? (
           <NegotiationWorkspace
             profile={activeDemoProfile}
             feature={negotiationFeature}
             onOpenProfileSwitch={() => setShowProfileSwitch(true)}
           />
+        ) : activeView === "automation-smart-plans" ? (
+          <div className="lofty-shell-section">
+            <SmartPlansWorkspace
+              role={role}
+              guidePhase={smartPlanGuidePhase}
+              onGuideAdvance={setSmartPlanGuidePhase}
+              onGuideExit={() => setSmartPlanGuidePhase("inactive")}
+            />
+          </div>
+        ) : activeView === "listings" ? (
+          <ListingsWorkspace
+            mlsFeeds={launchedMlsFeeds}
+            pocketListings={launchedPocketListings}
+            enabledListingCount={enabledListings.length}
+            onCreateMlsFeed={() => setContentEditor({ mode: "create", kind: "mls-feed" })}
+            onEditMlsFeed={(feed) => setContentEditor({ mode: "edit", kind: "mls-feed", feedId: feed.id })}
+            onToggleMlsFeed={handleToggleMlsFeed}
+            onCreatePocketListing={() => setContentEditor({ mode: "create", kind: "pocket-listing" })}
+            onEditPocketListing={(listing) => setContentEditor({ mode: "edit", kind: "pocket-listing", listingId: listing.id })}
+            onTogglePocketListing={handleTogglePocketListing}
+          />
+        ) : activeView === "websites" ? (
+          <WebsitesWorkspace
+            enabledListingCount={enabledListings.length}
+            guideStep={websiteGuideStep}
+            onCreateIdxWebsite={handleCreateIdxWebsite}
+          />
+        ) : (
+          <IdxBuilderWorkspace enabledListings={enabledListings} />
         )}
       </LoftyLaunchedShell>
       {showProfileSwitch ? (
@@ -1378,6 +2162,29 @@ function LaunchSuccessScreen({
           onClose={() => setShowProfileSwitch(false)}
           onSelectProfile={handleSelectDemoProfile}
         />
+      ) : null}
+      {contentEditor?.kind === "mls-feed" ? (
+        <MlsFeedEditorModal
+          existingFeed={contentEditor.feedId ? launchedMlsFeeds.find((feed) => feed.id === contentEditor.feedId) ?? null : null}
+          existingCount={launchedMlsFeeds.length}
+          onClose={() => setContentEditor(null)}
+          onSave={handleSaveMlsFeed}
+        />
+      ) : null}
+      {contentEditor?.kind === "pocket-listing" ? (
+        <PocketListingEditorModal
+          existingListing={
+            contentEditor.listingId
+              ? launchedPocketListings.find((listing) => listing.id === contentEditor.listingId) ?? null
+              : null
+          }
+          existingCount={launchedPocketListings.length}
+          onClose={() => setContentEditor(null)}
+          onSave={handleSavePocketListing}
+        />
+      ) : null}
+      {showIdxPreview ? (
+        <IdxPreviewModal listings={enabledListings} onClose={() => setShowIdxPreview(false)} onConfirm={handleConfirmIdxPreview} />
       ) : null}
     </>
   );
@@ -1412,7 +2219,7 @@ function DashboardHome({
   appointments: Array<{ id: string; title: string; timeLabel: string; personName: string; incomplete?: boolean }>;
   showings: Array<{ id: string; title: string; timeLabel: string; personName: string; incomplete?: boolean }>;
   transactions: Array<{ id: string; address: string; status: string; checklistCount: number; personName: string }>;
-  listings: typeof listingInsights;
+  listings: LaunchedListing[];
   hotSheets: typeof hotSheetItems;
   widgetAvailability: {
     newLeads: boolean;
@@ -1647,21 +2454,25 @@ function DashboardHome({
         )}
       </DashboardWidget>
 
-      <DashboardWidget title="My Listings">
+      <DashboardWidget title="Listings">
         {widgetAvailability.listings ? (
-          <div className="compact-list">
-            {listings.map((listing) => (
-              <div key={listing.id} className="compact-list-item">
-                <div>
-                  <strong>{listing.title}</strong>
-                  <span>{listing.location}</span>
-                  <small>{listing.trend}</small>
+          listings.length ? (
+            <div className="compact-list">
+              {listings.map((listing) => (
+                <div key={listing.id} className="compact-list-item">
+                  <div>
+                    <strong>{listing.address}</strong>
+                    <span>{formatListingLocation(listing)}</span>
+                    <small>{listing.trend}</small>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyWidgetState message="No enabled listings yet. Open Content > Listings to configure MLS feeds or pocket listings for your website." />
+          )
         ) : (
-          <EmptyWidgetState message="Build the website tab to bring listing activity into the dashboard." />
+          <EmptyWidgetState message="Build Content > Listings to bring property activity into the dashboard." />
         )}
       </DashboardWidget>
 
@@ -1680,6 +2491,646 @@ function DashboardHome({
         )}
       </DashboardWidget>
     </div>
+  );
+}
+
+function ListingsWorkspace({
+  mlsFeeds,
+  pocketListings,
+  enabledListingCount,
+  onCreateMlsFeed,
+  onEditMlsFeed,
+  onToggleMlsFeed,
+  onCreatePocketListing,
+  onEditPocketListing,
+  onTogglePocketListing
+}: {
+  mlsFeeds: LaunchedMlsFeed[];
+  pocketListings: LaunchedListing[];
+  enabledListingCount: number;
+  onCreateMlsFeed: () => void;
+  onEditMlsFeed: (feed: LaunchedMlsFeed) => void;
+  onToggleMlsFeed: (feedId: string, enabled: boolean) => void;
+  onCreatePocketListing: () => void;
+  onEditPocketListing: (listing: LaunchedListing) => void;
+  onTogglePocketListing: (listingId: string, enabled: boolean) => void;
+}) {
+  return (
+    <section className="listings-workspace">
+      <div className="listings-workspace__hero">
+        <div>
+          <p className="section-kicker">Content</p>
+          <h2>Listings</h2>
+          <p>Configure MLS feeds and pocket listings here. Enabled feeds and properties will populate the dashboard and your IDX website preview.</p>
+        </div>
+        <div className="chip-wrap">
+          <span className="mini-chip mini-chip--success">{enabledListingCount} enabled</span>
+          <span className="mini-chip">{mlsFeeds.length + pocketListings.length} saved</span>
+        </div>
+      </div>
+
+      <div className="listings-workspace__grid">
+        <MlsFeedCollectionCard
+          feeds={mlsFeeds}
+          onAdd={onCreateMlsFeed}
+          onEdit={onEditMlsFeed}
+          onToggleFeed={onToggleMlsFeed}
+        />
+        <PocketListingCollectionCard
+          title="Pocket listings"
+          subtitle="Add off-market inventory and keep it ready for previews and private website builds."
+          listings={pocketListings}
+          addButtonLabel="New pocket listing"
+          onAdd={onCreatePocketListing}
+          onEdit={onEditPocketListing}
+          onToggleListing={onTogglePocketListing}
+        />
+      </div>
+    </section>
+  );
+}
+
+function MlsFeedCollectionCard({
+  feeds,
+  onAdd,
+  onEdit,
+  onToggleFeed
+}: {
+  feeds: LaunchedMlsFeed[];
+  onAdd: () => void;
+  onEdit: (feed: LaunchedMlsFeed) => void;
+  onToggleFeed: (feedId: string, enabled: boolean) => void;
+}) {
+  return (
+    <article className="listing-collection-card">
+      <div className="listing-collection-card__header">
+        <div>
+          <h3>MLS feeds</h3>
+          <p>Connect MLS feeds that should provide listing inventory to your website preview and dashboard.</p>
+        </div>
+        <button className="secondary-button" onClick={onAdd}>
+          <Plus size={16} />
+          New MLS feed
+        </button>
+      </div>
+
+      {feeds.length ? (
+        <div className="listing-management-list">
+          {feeds.map((feed) => (
+            <article key={feed.id} className="listing-management-card">
+              <div className="chip-wrap">
+                <span className="mini-badge">MLS feed</span>
+                <span className={`mini-badge ${feed.enabled ? "mini-badge--built" : ""}`}>{feed.enabled ? "Enabled" : "Disabled"}</span>
+              </div>
+              <div className="listing-management-card__body">
+                <div className="listing-management-card__title-row">
+                  <div>
+                    <strong>{feed.sourceName}</strong>
+                    <span>Feed ID {feed.referenceId}</span>
+                  </div>
+                  <strong className="listing-management-card__price">Agent ID {feed.agentId}</strong>
+                </div>
+                <p>Sample MLS listings from this feed will power the dashboard, IDX preview, and builder handoff.</p>
+                <div className="listing-management-card__meta">
+                  <span>Source {feed.sourceName}</span>
+                  <span>Reference {feed.referenceId}</span>
+                </div>
+                <small>Feed configuration stays local in this demo and uses fixture-backed listings for preview output.</small>
+              </div>
+              <div className="listing-management-card__actions">
+                <button className="secondary-button" onClick={() => onEdit(feed)}>
+                  Edit feed
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-button toggle-button--switch ${feed.enabled ? "toggle-button--on" : ""}`}
+                  aria-pressed={feed.enabled}
+                  onClick={() => onToggleFeed(feed.id, !feed.enabled)}
+                >
+                  <span />
+                  <span className="sr-only">{feed.enabled ? "Disable MLS feed" : "Enable MLS feed"}</span>
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="workspace-empty-card">
+          <Layers3 size={24} />
+          <h4>No MLS feeds configured</h4>
+          <p>Use the feed setup form to connect your first MLS feed. Demo fill will preload a sample feed you can save immediately.</p>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function PocketListingCollectionCard({
+  title,
+  subtitle,
+  listings,
+  addButtonLabel,
+  onAdd,
+  onEdit,
+  onToggleListing
+}: {
+  title: string;
+  subtitle: string;
+  listings: LaunchedListing[];
+  addButtonLabel: string;
+  onAdd: () => void;
+  onEdit: (listing: LaunchedListing) => void;
+  onToggleListing: (listingId: string, enabled: boolean) => void;
+}) {
+  return (
+    <article className="listing-collection-card">
+      <div className="listing-collection-card__header">
+        <div>
+          <h3>{title}</h3>
+          <p>{subtitle}</p>
+        </div>
+        <button className="secondary-button" onClick={onAdd}>
+          <Plus size={16} />
+          {addButtonLabel}
+        </button>
+      </div>
+
+      {listings.length ? (
+        <div className="listing-management-list">
+          {listings.map((listing) => (
+            <article key={listing.id} className="listing-management-card">
+              <div className="listing-management-card__image-wrap">
+                <img src={listing.imageUrl} alt={listing.address} />
+                <div className="chip-wrap">
+                  <span className="mini-badge">{getListingTypeLabel(listing.type)}</span>
+                  <span className={`mini-badge ${listing.enabled ? "mini-badge--built" : ""}`}>{listing.enabled ? "Enabled" : "Disabled"}</span>
+                </div>
+              </div>
+              <div className="listing-management-card__body">
+                <div className="listing-management-card__title-row">
+                  <div>
+                    <strong>{listing.address}</strong>
+                    <span>{formatListingLocation(listing)}</span>
+                  </div>
+                  <strong className="listing-management-card__price">{formatCurrency(listing.price)}</strong>
+                </div>
+                <p>{listing.headline}</p>
+                <div className="listing-management-card__meta">
+                  <span>{listing.bedrooms} BR</span>
+                  <span>{listing.bathrooms} BA</span>
+                  <span>{listing.squareFeet.toLocaleString()} sqft</span>
+                  <span>{listing.neighborhood}</span>
+                </div>
+                <small>{listing.trend}</small>
+              </div>
+              <div className="listing-management-card__actions">
+                <button className="secondary-button" onClick={() => onEdit(listing)}>
+                  Edit details
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-button toggle-button--switch ${listing.enabled ? "toggle-button--on" : ""}`}
+                  aria-pressed={listing.enabled}
+                  onClick={() => onToggleListing(listing.id, !listing.enabled)}
+                >
+                  <span />
+                  <span className="sr-only">{listing.enabled ? "Disable listing" : "Enable listing"}</span>
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="workspace-empty-card">
+          <Layers3 size={24} />
+          <h4>No {title.toLowerCase()} configured</h4>
+          <p>Use the setup form to add your first property. Demo fill will preload sample data you can save immediately.</p>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function WebsitesWorkspace({
+  enabledListingCount,
+  guideStep,
+  onCreateIdxWebsite
+}: {
+  enabledListingCount: number;
+  guideStep: WebsiteGuideStep;
+  onCreateIdxWebsite: () => void;
+}) {
+  return (
+    <section className="websites-workspace">
+      <div className={`websites-empty-state ${guideStep === "blocked" ? "websites-empty-state--guided" : ""}`.trim()}>
+        <div className="websites-empty-state__copy">
+          <p className="section-kicker">Content</p>
+          <h2>Websites</h2>
+          <p>No websites created yet.</p>
+          <small>
+            {enabledListingCount
+              ? `${enabledListingCount} enabled listing${enabledListingCount === 1 ? "" : "s"} ready for IDX preview.`
+              : "Enable at least one MLS feed or pocket listing before creating an IDX website."}
+          </small>
+        </div>
+        <div className="websites-empty-state__cta-wrap">
+          <button className="launch-button websites-empty-state__cta" onClick={onCreateIdxWebsite}>
+            <ExternalLink size={16} />
+            create an IDX website
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function IdxBuilderWorkspace({ enabledListings }: { enabledListings: LaunchedListing[] }) {
+  return (
+    <section className="idx-builder-workspace">
+      <div className="idx-builder-workspace__hero">
+        <div>
+          <p className="section-kicker">Websites</p>
+          <h2>IDX Builder</h2>
+          <p>The website builder shell is ready. The content canvas stays empty for now while the AI sidebar takes over the next step.</p>
+        </div>
+        <div className="chip-wrap">
+          <span className="mini-chip mini-chip--success">{enabledListings.length} preview listings connected</span>
+        </div>
+      </div>
+      <div className="idx-builder-canvas idx-builder-canvas--disabled">
+        <div className="idx-builder-canvas__veil" />
+        <div className="idx-builder-canvas__copy">
+          <h3>IDX builder content goes here</h3>
+          <p>The canvas is intentionally greyed out until the AI Copilots sidebar starts generating the first website draft.</p>
+          <div className="chip-wrap">
+            {enabledListings.map((listing) => (
+              <span key={listing.id} className="mini-chip">
+                {listing.address}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MlsFeedEditorModal({
+  existingFeed,
+  existingCount,
+  onClose,
+  onSave
+}: {
+  existingFeed: LaunchedMlsFeed | null;
+  existingCount: number;
+  onClose: () => void;
+  onSave: (feed: LaunchedMlsFeed) => void;
+}) {
+  const [formValues, setFormValues] = useState<MlsFeedFormValues>(buildMlsFeedFormValues(existingFeed ?? undefined));
+
+  useEffect(() => {
+    setFormValues(buildMlsFeedFormValues(existingFeed ?? undefined));
+  }, [existingFeed]);
+
+  const isValid = validateMlsFeedForm(formValues);
+
+  function updateField(field: keyof MlsFeedFormValues, value: string | boolean) {
+    setFormValues((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  return (
+    <ModalFrame
+      title={`${existingFeed ? "Edit" : "Create"} MLS feed`}
+      subtitle="Set up the MLS feed connection that should supply demo-backed listings for website creation."
+      onClose={onClose}
+      panelClassName="modal-panel--wide"
+    >
+      <div className="listing-editor-modal">
+        <div className="listing-editor-modal__actions">
+          <button className="secondary-button" onClick={() => setFormValues(getDemoMlsFeedFormValues(existingCount))}>
+            <WandSparkles size={16} />
+            Demo fill
+          </button>
+          <button
+            type="button"
+            className={`toggle-button ${formValues.enabled ? "toggle-button--on" : ""}`}
+            onClick={() => updateField("enabled", !formValues.enabled)}
+          >
+            {formValues.enabled ? "Enabled for website" : "Save disabled"}
+          </button>
+        </div>
+
+        <div className="listing-form-grid">
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>MLS source</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.sourceName} onChange={(event) => updateField("sourceName", event.target.value)} />
+            <p>Name of the MLS feed that should supply listings to the website preview.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Listing Agent ID</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.agentId} onChange={(event) => updateField("agentId", event.target.value)} />
+            <p>Enter the agent identifier used to match listings from this feed.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Feed reference ID</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.referenceId} onChange={(event) => updateField("referenceId", event.target.value)} />
+            <p>Use the MLS, IDX, or internal feed identifier that distinguishes this connection.</p>
+          </label>
+        </div>
+
+        <div className="panel-button-row">
+          <button className="secondary-button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="primary-button"
+            disabled={!isValid}
+            onClick={() => onSave(buildMlsFeedFromForm(formValues, existingFeed?.id))}
+          >
+            Save MLS feed
+          </button>
+        </div>
+      </div>
+    </ModalFrame>
+  );
+}
+
+function PocketListingEditorModal({
+  existingListing,
+  existingCount,
+  onClose,
+  onSave
+}: {
+  existingListing: LaunchedListing | null;
+  existingCount: number;
+  onClose: () => void;
+  onSave: (listing: LaunchedListing) => void;
+}) {
+  const [formValues, setFormValues] = useState<PocketListingFormValues>(buildPocketListingFormValues(existingListing ?? undefined));
+
+  useEffect(() => {
+    setFormValues(buildPocketListingFormValues(existingListing ?? undefined));
+  }, [existingListing]);
+
+  const isValid = validatePocketListingForm(formValues);
+
+  function updateField(field: keyof PocketListingFormValues, value: string | boolean) {
+    setFormValues((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  return (
+    <ModalFrame
+      title={`${existingListing ? "Edit" : "Create"} Pocket listing`}
+      subtitle="Set up the off-market property details that should be available for website creation."
+      onClose={onClose}
+      panelClassName="modal-panel--wide"
+    >
+      <div className="listing-editor-modal">
+        <div className="listing-editor-modal__actions">
+          <button className="secondary-button" onClick={() => setFormValues(getDemoPocketListingFormValues(existingCount))}>
+            <WandSparkles size={16} />
+            Demo fill
+          </button>
+          <button
+            type="button"
+            className={`toggle-button ${formValues.enabled ? "toggle-button--on" : ""}`}
+            onClick={() => updateField("enabled", !formValues.enabled)}
+          >
+            {formValues.enabled ? "Enabled for website" : "Save disabled"}
+          </button>
+        </div>
+
+        <div className="listing-form-grid">
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Pocket source</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.sourceName} onChange={(event) => updateField("sourceName", event.target.value)} />
+            <p>Private network or office channel this listing belongs to.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Seller contact</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.contactName} onChange={(event) => updateField("contactName", event.target.value)} />
+            <p>Primary contact for the off-market opportunity.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Availability</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.availability} onChange={(event) => updateField("availability", event.target.value)} />
+            <p>Set expectations for private tours and timing.</p>
+          </label>
+
+          <label className="field-block field-block--wide">
+            <div className="field-label-row">
+              <span>Headline</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.headline} onChange={(event) => updateField("headline", event.target.value)} />
+            <p>Short summary that will appear in the preview and listing cards.</p>
+          </label>
+
+          <label className="field-block field-block--wide">
+            <div className="field-label-row">
+              <span>Street address</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.address} onChange={(event) => updateField("address", event.target.value)} />
+            <p>Use the public-facing property address for website previews.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>City</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.city} onChange={(event) => updateField("city", event.target.value)} />
+            <p>City used in dashboard and IDX cards.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>State</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.state} onChange={(event) => updateField("state", event.target.value)} />
+            <p>Two-letter state code.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>ZIP</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.zip} onChange={(event) => updateField("zip", event.target.value)} />
+            <p>ZIP code for the listing address.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Price</span>
+              <small>Required</small>
+            </div>
+            <input type="number" min="0" value={formValues.price} onChange={(event) => updateField("price", event.target.value)} />
+            <p>Use the current list price that should appear in the website preview.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Bedrooms</span>
+              <small>Required</small>
+            </div>
+            <input type="number" min="0" value={formValues.bedrooms} onChange={(event) => updateField("bedrooms", event.target.value)} />
+            <p>Total bedrooms.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Bathrooms</span>
+              <small>Required</small>
+            </div>
+            <input type="number" min="0" step="0.5" value={formValues.bathrooms} onChange={(event) => updateField("bathrooms", event.target.value)} />
+            <p>Total bathrooms.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Square feet</span>
+              <small>Required</small>
+            </div>
+            <input type="number" min="0" value={formValues.squareFeet} onChange={(event) => updateField("squareFeet", event.target.value)} />
+            <p>Interior living area.</p>
+          </label>
+
+          <label className="field-block">
+            <div className="field-label-row">
+              <span>Neighborhood</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.neighborhood} onChange={(event) => updateField("neighborhood", event.target.value)} />
+            <p>Helps the preview feel grounded in place.</p>
+          </label>
+
+          <label className="field-block field-block--wide">
+            <div className="field-label-row">
+              <span>Listing trend</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.trend} onChange={(event) => updateField("trend", event.target.value)} />
+            <p>Short dashboard-friendly status or momentum note.</p>
+          </label>
+
+          <label className="field-block field-block--wide">
+            <div className="field-label-row">
+              <span>Hero image URL</span>
+              <small>Required</small>
+            </div>
+            <input value={formValues.imageUrl} onChange={(event) => updateField("imageUrl", event.target.value)} />
+            <p>Used in the listing setup cards and IDX preview modal.</p>
+          </label>
+
+          <label className="field-block field-block--wide">
+            <div className="field-label-row">
+              <span>Description</span>
+              <small>Required</small>
+            </div>
+            <textarea value={formValues.description} onChange={(event) => updateField("description", event.target.value)} />
+            <p>Longer description shown in the property preview before the IDX builder opens.</p>
+          </label>
+        </div>
+
+        <div className="panel-button-row">
+          <button className="secondary-button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="primary-button"
+            disabled={!isValid}
+            onClick={() => onSave(buildPocketListingFromForm(formValues, existingListing?.id))}
+          >
+            Save pocket listing
+          </button>
+        </div>
+      </div>
+    </ModalFrame>
+  );
+}
+
+function IdxPreviewModal({
+  listings,
+  onClose,
+  onConfirm
+}: {
+  listings: LaunchedListing[];
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <ModalFrame
+      title="Preview listings for the IDX website"
+      subtitle="Review the enabled properties that will seed the website before opening the builder."
+      onClose={onClose}
+      panelClassName="modal-panel--wide"
+    >
+      <div className="idx-preview-modal">
+        <div className="idx-preview-list">
+          {listings.map((listing) => (
+            <article key={listing.id} className="idx-preview-card">
+              <img src={listing.imageUrl} alt={listing.address} />
+              <div className="idx-preview-card__body">
+                <div className="idx-preview-card__header">
+                  <div>
+                    <strong>{listing.address}</strong>
+                    <span>{formatListingLocation(listing)}</span>
+                  </div>
+                  <strong>{formatCurrency(listing.price)}</strong>
+                </div>
+                <div className="chip-wrap">
+                  <span className="mini-badge">{getListingTypeLabel(listing.type)}</span>
+                  <span className="mini-badge">{listing.bedrooms} BR</span>
+                  <span className="mini-badge">{listing.bathrooms} BA</span>
+                  <span className="mini-badge">{listing.squareFeet.toLocaleString()} sqft</span>
+                </div>
+                <p>{listing.headline}</p>
+                <small>{listing.description}</small>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="panel-button-row">
+          <button className="secondary-button" onClick={onClose}>
+            Back
+          </button>
+          <button className="primary-button" onClick={onConfirm}>
+            Open builder
+          </button>
+        </div>
+      </div>
+    </ModalFrame>
   );
 }
 
@@ -1930,16 +3381,18 @@ function ModalFrame({
   title,
   subtitle,
   onClose,
-  children
+  children,
+  panelClassName = ""
 }: {
   title: string;
   subtitle: string;
   onClose: () => void;
   children: ReactNode;
+  panelClassName?: string;
 }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
+      <div className={`modal-panel ${panelClassName}`.trim()} onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>
             <h3>{title}</h3>

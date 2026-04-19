@@ -19,6 +19,8 @@ import type {
   DashboardPerson,
   DashboardUpdate,
   HotSheetItem,
+  LaunchedListing,
+  LaunchedNavItem,
   LeadAppointment,
   LeadTask,
   LeadViewId,
@@ -30,10 +32,13 @@ import type {
   PromptConfigStore,
   PromptFieldDefinition,
   PromptTarget,
+  RoleDashboardPreferences,
   RoleDefinition,
   RoleId,
   SubfeatureDefinition
 } from "./types";
+import testUser from "./config/test-user.json";
+import roleDashboardDefaults from "./config/role-dashboard-defaults.json";
 
 const allRoles: RoleId[] = [
   "company-owner",
@@ -123,6 +128,79 @@ export const topNavItems: Array<{ id: LibraryCardId; label: string }> = [
   { id: "marketplace", label: "Marketplace" },
   { id: "ai-copilots", label: "AI Copilots" }
 ];
+
+const roleDashboardPreferenceMap = roleDashboardDefaults as Record<RoleId, RoleDashboardPreferences>;
+
+const launchedNavCardMeta: Partial<Record<LibraryCardId, Pick<LaunchedNavItem, "href" | "icon" | "isAi">>> = {
+  crm: { href: "/" },
+  sales: { href: "/" },
+  marketing: { href: "/" },
+  content: { href: "/" },
+  automation: { href: "/" },
+  reporting: { href: "/" },
+  marketplace: { href: "/" },
+  "ai-copilots": { href: "/", icon: "icon-AI", isAi: true }
+};
+
+const launchedNavSubfeatureMeta: Partial<Record<LibraryCardId, Record<string, Partial<LaunchedNavItem>>>> = {
+  crm: {
+    people: { icon: "icon-people_06", view: "crm-people" },
+    segments: { icon: "icon-group_01", href: "/" },
+    tasks: { icon: "icon-task_01", href: "/" },
+    calendar: { icon: "icon-calendar_01", href: "/" }
+  },
+  sales: {
+    showing: { icon: "icon-CRM-showing", href: "/" },
+    offers: { icon: "icon-offer_01", href: "/" },
+    transactions: { icon: "icon-Transaction", href: "/" }
+  },
+  marketing: {
+    emails: { icon: "icon-mail_01", href: "/" },
+    "text-messages": { icon: "icon-message_01", href: "/" },
+    "social-agent": { icon: "icon-social_01", href: "/" },
+    "direct-mail": { icon: "icon-mailbox_01", href: "/" },
+    "lead-generation": { icon: "icon-lead_capture", href: "/" },
+    "lofty-bloom": { icon: "icon-location_03", href: "/" },
+    "brand-awareness": { icon: "icon-brag", href: "/" }
+  },
+  content: {
+    "my-listings": { icon: "icon-listhome_01", label: "Listings", view: "listings" },
+    websites: { icon: "icon-Website1", view: "websites" },
+    "landing-pages": { icon: "icon-site_style", href: "/" },
+    "lofty-present": { icon: "icon-listhome_01", href: "/" },
+    "open-house-form": { icon: "icon-letter_01", href: "/" },
+    "design-center": { icon: "icon-editimage_01", href: "/" }
+  },
+  automation: {
+    "smart-plans": { icon: "icon-smart_plan_01", view: "automation-smart-plans" },
+    "email-automation": { icon: "icon-mail_01", href: "/" },
+    "text-automation": { icon: "icon-message_01", href: "/" },
+    workflows: { icon: "icon-task_01", href: "/" },
+    "property-alerts": { icon: "icon-Vector", href: "/" },
+    "ai-workflows": { icon: "icon-AI", href: "/" }
+  },
+  reporting: {
+    "business-summary": { href: "/" },
+    "agent-performance": { href: "/" },
+    "source-performance": { href: "/" },
+    "activity-metrics": { href: "/" },
+    "site-traffic": { href: "/" },
+    "email-accountability": { href: "/" }
+  },
+  marketplace: {
+    marketplace: { icon: "icon-Marketplace", href: "/" },
+    "integration-center": { icon: "icon-integration_01", href: "/" }
+  },
+  "ai-copilots": {
+    "ai-assistant": { icon: "icon-AI", href: "/" },
+    "sales-agent": { icon: "icon-AI", href: "/" },
+    "social-agent-ai": { icon: "icon-social_01", href: "/" },
+    "homeowner-agent": { icon: "icon-house_17", href: "/" },
+    "ai-workflow-copilot": { icon: "icon-AI", href: "/" },
+    "website-building-agent": { icon: "icon-Website1", href: "/" },
+    "agent-studio": { icon: "icon-AI", href: "/" }
+  }
+};
 
 export const roleDefinitions: RoleDefinition[] = [
   {
@@ -226,7 +304,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         allRoles,
         [
           selectField("importSource", "Lead source", ["Website", "CSV import", "Partner leads", "Manual entry"], "Choose the first source you want to use.", "Website"),
-          textField("ownerRule", "Default owner or team", "This helps route people into the right workspace.", "James Carter"),
+          textField("ownerRule", "Default owner or team", "This helps route people into the right workspace.", testUser.name),
           toggleField("mergeDuplicates", "Merge duplicates", "Turn this on to auto-flag duplicate people records.", true)
         ],
         "Sets up the main lead database and ownership defaults.",
@@ -456,6 +534,21 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
     lockExplanation: "Content setup is for the roles that own websites and lead capture surfaces.",
     subfeatures: [
       subfeature(
+        "my-listings",
+        "Listings",
+        "Connects your MLS feed settings and pocket inventory for website and presentation display.",
+        nonLenderRoles,
+        nonLenderRoles,
+        [
+          selectField("mlsSource", "MLS Source", ["Local IDX", "Team feed", "Office feed", "Manual entry"], "Choose which MLS feed should supply website inventory.", "Local IDX"),
+          textField("listingAgentId", "Listing Agent ID", "Enter the agent ID used to match listings inside the MLS feed.", testUser.id)
+        ],
+        "Connects the MLS feed source and listing agent ID.",
+        "This helps MLS feed inventory appear automatically on your website and presentations.",
+        "MLS feed access depends on connection settings and role permissions.",
+        true
+      ),
+      subfeature(
         "websites",
         "Websites",
         "Creates the main public website and listing search experience.",
@@ -530,7 +623,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
     label: "Automation",
     description: "Smart plans, workflows, alerts, and follow-up automation.",
     allowedRoles: nonLenderRoles,
-    requiredFor: ["company-owner", "company-admin", "office-owner", "office-admin"],
+    requiredFor: nonLenderRoles,
     icon: Sparkles,
     whatItDoes: "Automates follow-up so the team does not have to manage every step manually.",
     whyItMatters: "Automation is how Lofty keeps the database moving even when no one is online.",
@@ -542,7 +635,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "Smart Plans",
         "Builds saved follow-up plans for consistent outreach.",
         nonLenderRoles,
-        ["company-owner", "company-admin", "office-owner", "office-admin", "agent-user"],
+        nonLenderRoles,
         [
           selectField("planTemplate", "Plan template", ["New lead nurture", "Seller follow-up", "Sphere touch"], "Choose the first plan template.", "New lead nurture"),
           selectField("planOwner", "Plan owner", ["Personal", "Team", "Office"], "Choose who this plan belongs to.", "Personal")
@@ -556,7 +649,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "Email Automation",
         "Automates email sends inside your follow-up workflows.",
         nonLenderRoles,
-        ownerAndAdminRoles.concat(["agent-user"]),
+        [],
         [
           selectField("emailSeries", "Email series", ["Welcome series", "Open house follow-up", "Buyer nurture"], "Choose the first email sequence.", "Welcome series")
         ],
@@ -569,7 +662,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "Text Automation",
         "Automates text touchpoints inside nurture workflows.",
         nonLenderRoles,
-        ownerAndAdminRoles.concat(["agent-user"]),
+        [],
         [
           selectField("textSeries", "Text series", ["Speed to lead", "Open house follow-up", "Long-term nurture"], "Choose the first text sequence.", "Speed to lead")
         ],
@@ -582,7 +675,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "Workflows",
         "Links triggers and actions into broader operational automations.",
         nonLenderRoles,
-        ownerAndAdminRoles,
+        [],
         [
           selectField("workflowTrigger", "Trigger", ["New lead", "Stage change", "Property saved"], "Choose the main trigger for the first workflow.", "New lead"),
           selectField("workflowAction", "Action", ["Assign task", "Send email", "Notify team"], "Choose the first automated action.", "Assign task")
@@ -596,7 +689,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "Property Alerts",
         "Sends saved search and property update alerts automatically.",
         nonLenderRoles,
-        ownerAndAdminRoles.concat(["agent-user"]),
+        [],
         [
           selectField("alertType", "Alert type", ["New listings", "Price changes", "Saved search matches"], "Choose the first property alert type.", "New listings")
         ],
@@ -609,7 +702,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
         "AI Workflows",
         "Adds AI-generated steps and recommendations into automations.",
         nonLenderRoles,
-        ["company-owner", "company-admin", "office-owner", "office-admin"],
+        [],
         [
           selectField("aiGoal", "AI workflow goal", ["Lead qualification", "Database cleanup", "Seller nurture"], "Choose where AI should help first.", "Lead qualification")
         ],
@@ -882,7 +975,7 @@ export const presetDefinitions: PresetDefinition[] = [
     name: "Office Admin Setup",
     description: "Prioritizes day-to-day office operations and reporting.",
     roleIds: ["office-admin"],
-    recommendedCards: ["crm", "sales", "automation", "reporting"]
+    recommendedCards: ["crm", "sales", "content", "automation", "reporting"]
   },
   {
     id: "lender-setup",
@@ -896,14 +989,14 @@ export const presetDefinitions: PresetDefinition[] = [
     name: "Advanced Marketing Setup",
     description: "Adds the public-facing and growth tabs first.",
     roleIds: ["company-owner", "company-admin", "office-owner", "office-admin", "agent-user"],
-    recommendedCards: ["content", "marketing", "automation", "ai-copilots"]
+    recommendedCards: ["crm", "sales", "content", "marketing", "automation", "reporting", "ai-copilots"]
   },
   {
     id: "minimal-launch-setup",
     name: "Minimal Launch Setup",
     description: "Keeps launch tight with only the minimum required tabs.",
     roleIds: allRoles,
-    recommendedCards: ["crm", "sales", "content"]
+    recommendedCards: ["crm", "sales", "content", "automation", "reporting"]
   }
 ];
 
@@ -941,7 +1034,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Facebook",
     stage: "New lead",
     score: 59,
-    assignedAgent: "Baylee Carter",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 9:12 AM",
     lastReply: "No reply yet",
     communicationSummary: "Last text sent 22 min ago",
@@ -966,7 +1059,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Zillow",
     stage: "Engaged",
     score: 44,
-    assignedAgent: "James Holloway",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 11:40 AM",
     lastReply: "Yesterday · 6:10 PM",
     communicationSummary: "Last call connected for 8 min",
@@ -998,7 +1091,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "YouTube",
     stage: "Active search",
     score: 43,
-    assignedAgent: "Baylee Carter",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 12:05 PM",
     lastReply: "Today · 8:45 AM",
     communicationSummary: "Email opened 2 times today",
@@ -1024,7 +1117,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Website",
     stage: "Nurture",
     score: 88,
-    assignedAgent: "Morgan Lee",
+    assignedAgent: testUser.name,
     lastTouch: "Yesterday · 4:20 PM",
     lastReply: "Yesterday · 4:28 PM",
     communicationSummary: "Email reply received on valuation follow-up",
@@ -1054,7 +1147,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Website",
     stage: "Showing requested",
     score: 81,
-    assignedAgent: "Jamie Brooks",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 9:30 AM",
     lastReply: "Today · 9:36 AM",
     communicationSummary: "Showing request confirmed by text",
@@ -1077,7 +1170,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Home valuation",
     stage: "Warm seller",
     score: 76,
-    assignedAgent: "James Holloway",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 3:10 PM",
     lastReply: "No reply yet",
     communicationSummary: "Call task created from valuation form",
@@ -1107,7 +1200,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Website",
     stage: "Re-engaged",
     score: 61,
-    assignedAgent: "Baylee Carter",
+    assignedAgent: testUser.name,
     lastTouch: "Today · 11:05 AM",
     lastReply: "Today · 11:18 AM",
     communicationSummary: "Welcome-back text sent and clicked",
@@ -1130,7 +1223,7 @@ export const dashboardPeople: DashboardPerson[] = [
     source: "Website",
     stage: "Database nurture",
     score: 48,
-    assignedAgent: "Morgan Lee",
+    assignedAgent: testUser.name,
     lastTouch: "Yesterday · 2:00 PM",
     lastReply: "3 days ago",
     communicationSummary: "Last text sent in Spanish nurture flow",
@@ -1167,6 +1260,10 @@ export const listingInsights: ListingInsight[] = [
     trend: "Viewed by 4 warm buyers"
   }
 ];
+
+export function formatListingLocation(listing: Pick<LaunchedListing, "city" | "state" | "zip">) {
+  return `${listing.city}, ${listing.state} ${listing.zip}`;
+}
 
 export const hotSheetItems: HotSheetItem[] = [
   { id: "hs-open-house", label: "Upcoming Open House", count: 12 },
@@ -1211,42 +1308,14 @@ export function buildInitialToggleStore(roleId: RoleId): Partial<Record<LibraryC
   return Object.fromEntries(
     libraryCardDefinitions.map((card) => [
       card.id,
-      Object.fromEntries(
-        card.subfeatures.map((item) => [
-          item.id,
-          item.allowedRoles.includes(roleId) ? item.defaultEnabled || item.requiredFor.includes(roleId) : false
-        ])
-      )
+      Object.fromEntries(card.subfeatures.map((item) => [item.id, false]))
     ])
   ) as Partial<Record<LibraryCardId, CardToggleStore>>;
 }
 
-export function buildInitialConfigStore(roleId: RoleId): Partial<Record<LibraryCardId, PromptConfigStore>> {
+export function buildInitialConfigStore(_roleId: RoleId): Partial<Record<LibraryCardId, PromptConfigStore>> {
   return Object.fromEntries(
-    libraryCardDefinitions.map((card) => [
-      card.id,
-      Object.fromEntries(
-        card.subfeatures
-          .filter((item) => item.allowedRoles.includes(roleId) && item.requiredFor.includes(roleId))
-          .map((item) => [
-            item.id,
-            Object.fromEntries(
-              item.promptFields.map((field) => {
-                if (field.defaultValue !== undefined) {
-                  return [field.id, field.defaultValue];
-                }
-                if (field.type === "select") {
-                  return [field.id, field.options?.[0] ?? ""];
-                }
-                if (field.type === "toggle") {
-                  return [field.id, true];
-                }
-                return [field.id, field.placeholder ?? `${item.name} setup`];
-              })
-            )
-          ])
-      )
-    ])
+    libraryCardDefinitions.map((card) => [card.id, {}])
   ) as Partial<Record<LibraryCardId, PromptConfigStore>>;
 }
 
@@ -1266,6 +1335,108 @@ export function buildPromptDefaults(promptTarget: PromptTarget): Record<string, 
       return [field.id, field.placeholder ?? `${subfeature.name} setup`];
     })
   );
+}
+
+export function getRoleDashboardPreferences(roleId: RoleId): RoleDashboardPreferences {
+  return (
+    roleDashboardPreferenceMap[roleId] ?? {
+      builtCards: getRecommendedCards(roleId),
+      enabledSubfeatures: {}
+    }
+  );
+}
+
+function getRoleEnabledSubfeatureIds(roleId: RoleId, cardId: LibraryCardId) {
+  return new Set(getRoleDashboardPreferences(roleId).enabledSubfeatures[cardId] ?? []);
+}
+
+export function buildAutoselectedCardStates(roleId: RoleId): Partial<Record<LibraryCardId, CardState>> {
+  const recommendedCardIds = new Set(getRoleDashboardPreferences(roleId).builtCards);
+  return Object.fromEntries(
+    libraryCardDefinitions.map((card) => [
+      card.id,
+      recommendedCardIds.has(card.id) && card.allowedRoles.includes(roleId) ? "built" : "not-started"
+    ])
+  ) as Partial<Record<LibraryCardId, CardState>>;
+}
+
+export function buildAutoselectedToggleStore(roleId: RoleId): Partial<Record<LibraryCardId, CardToggleStore>> {
+  return Object.fromEntries(
+    libraryCardDefinitions.map((card) => {
+      const enabledSubfeatureIds = getRoleEnabledSubfeatureIds(roleId, card.id);
+      const subfeatureToggles: CardToggleStore = {};
+      card.subfeatures.forEach((subfeature) => {
+        subfeatureToggles[subfeature.id] =
+          subfeature.allowedRoles.includes(roleId) && enabledSubfeatureIds.has(subfeature.id);
+      });
+      return [card.id, subfeatureToggles];
+    })
+  ) as Partial<Record<LibraryCardId, CardToggleStore>>;
+}
+
+export function buildAutoselectedConfigStore(roleId: RoleId): Partial<Record<LibraryCardId, PromptConfigStore>> {
+  const preferences = getRoleDashboardPreferences(roleId);
+  return Object.fromEntries(
+    libraryCardDefinitions.map((card) => {
+      const subfeatureConfigs: PromptConfigStore = {};
+      const enabledSubfeatureIds = getRoleEnabledSubfeatureIds(roleId, card.id);
+      const configOverrides = preferences.subfeatureConfigOverrides?.[card.id] ?? {};
+      const subfeaturesToConfigure = card.subfeatures.filter(
+        (item) => item.allowedRoles.includes(roleId) && enabledSubfeatureIds.has(item.id)
+      );
+
+      subfeaturesToConfigure.forEach((subfeature) => {
+        if (subfeature.promptFields.length > 0) {
+          subfeatureConfigs[subfeature.id] = {
+            ...buildPromptDefaults({ cardId: card.id, subfeatureId: subfeature.id }),
+            ...(configOverrides[subfeature.id] ?? {})
+          };
+        }
+      });
+      return [card.id, subfeatureConfigs];
+    })
+  ) as Partial<Record<LibraryCardId, PromptConfigStore>>;
+}
+
+export function buildLaunchedNavItems(
+  launchedCards: Array<{ card: LibraryCardDefinition; enabledSubfeatures: SubfeatureDefinition[] }>
+): LaunchedNavItem[] {
+  const launchedCardMap = new Map(launchedCards.map((item) => [item.card.id, item]));
+
+  const navItems: Array<LaunchedNavItem | null> = topNavItems
+    .map((navItem) => {
+      const launchedCard = launchedCardMap.get(navItem.id);
+      if (!launchedCard) {
+        return null;
+      }
+
+      const submenu = launchedCard.enabledSubfeatures
+        .map((subfeature) => {
+          const metadata = launchedNavSubfeatureMeta[launchedCard.card.id]?.[subfeature.id] ?? {};
+          return {
+            label: metadata.label ?? subfeature.name,
+            icon: metadata.icon,
+            href: metadata.view ? undefined : metadata.href ?? "/",
+            view: metadata.view
+          } satisfies LaunchedNavItem;
+        })
+        .filter((item) => item.label);
+
+      if (submenu.length === 0) {
+        return null;
+      }
+
+      const topLevelMetadata = launchedNavCardMeta[navItem.id] ?? {};
+      return {
+        label: navItem.label,
+        href: topLevelMetadata.href ?? "/",
+        icon: topLevelMetadata.icon,
+        isAi: topLevelMetadata.isAi,
+        submenu
+      } satisfies LaunchedNavItem;
+    });
+
+  return navItems.filter((item): item is LaunchedNavItem => item !== null);
 }
 
 export function cardHasConfiguredRequiredSubfeatures(snapshot: OnboardingSnapshot, card: LibraryCardDefinition, roleId: RoleId) {

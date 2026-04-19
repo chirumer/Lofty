@@ -1,0 +1,38 @@
+[
+  {
+    "sourceName": "Phoenix Valley MLX",
+    "agentId": "MLX-20491",
+    "referenceId": "ARZ-119204",
+    "headline": "Camelback views with a fresh designer remodel",
+    "address": "4521 N Arcadia Drive",
+    "city": "Phoenix",
+    "state": "AZ",
+    "zip": "85018",
+    "price": 1249000,
+    "bedrooms": 4,
+    "bathrooms": 3.5,
+    "squareFeet": 3180,
+    "neighborhood": "Arcadia",
+    "trend": "Saved by 11 buyer leads this week",
+    "imageUrl": "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1200&q=80",
+    "description": "Open-concept plan with a chef kitchen, split guest suite, and resort-style backyard minutes from dining and hiking."
+  },
+  {
+    "sourceName": "Scottsdale Premier MLX",
+    "agentId": "MLX-31802",
+    "referenceId": "SDL-772418",
+    "headline": "North Scottsdale entertainer with golf-course proximity",
+    "address": "9018 E Copper Vista Lane",
+    "city": "Scottsdale",
+    "state": "AZ",
+    "zip": "85255",
+    "price": 1895000,
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "squareFeet": 4012,
+    "neighborhood": "DC Ranch",
+    "trend": "New showing requests from relocation buyers",
+    "imageUrl": "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80",
+    "description": "Single-level luxury home with retractable glass walls, detached casita, and flexible office space for hybrid work."
+  }
+]
