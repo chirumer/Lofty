@@ -73,6 +73,7 @@ import type {
   SubfeatureDefinition
 } from "./types";
 import LoftyLaunchedShell from "./components/LoftyLaunchedShell";
+import testUser from "./config/test-user.json";
 
 const STORAGE_KEY = "lofty-role-aware-setup-builder-v4";
 
@@ -1183,18 +1184,7 @@ function LaunchSuccessScreen({
 
   const people = useMemo(() => getDashboardPeopleForRole(role.id), [role.id]);
   const peopleViewItems = getPeopleViewList(peopleViewId, role.id);
-  const greetingName =
-    role.id === "company-owner"
-      ? "James"
-      : role.id === "company-admin"
-        ? "Baylee"
-        : role.id === "office-owner"
-          ? "Jamie"
-          : role.id === "office-admin"
-            ? "Morgan"
-            : role.id === "lender"
-              ? "Taylor"
-              : "Baylee";
+  const greetingName = testUser.name;
   const hour = new Date().getHours();
   const greetingLabel = hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening";
 
