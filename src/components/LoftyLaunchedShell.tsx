@@ -525,6 +525,7 @@ export default function LoftyLaunchedShell({
   onNavigateMessages,
   onNavigateNegotiation,
   onNavigatePeople,
+  onNavigateSmartPlans,
   onNavigateListings,
   onNavigateWebsites,
   onOpenProfileSwitch,
@@ -546,6 +547,7 @@ export default function LoftyLaunchedShell({
   onNavigateMessages: () => void;
   onNavigateNegotiation: () => void;
   onNavigatePeople: () => void;
+  onNavigateSmartPlans: () => void;
   onNavigateListings: () => void;
   onNavigateWebsites: () => void;
   onOpenProfileSwitch: () => void;
@@ -581,6 +583,11 @@ export default function LoftyLaunchedShell({
 
     if (view === "crm-people") {
       onNavigatePeople();
+      return;
+    }
+
+    if (view === "automation-smart-plans") {
+      onNavigateSmartPlans();
       return;
     }
 
