@@ -457,6 +457,21 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
     lockExplanation: "Content setup is for the roles that own websites and lead capture surfaces.",
     subfeatures: [
       subfeature(
+        "my-listings",
+        "My Listings",
+        "Connects your personal and team listings for website and presentation display.",
+        nonLenderRoles,
+        nonLenderRoles,
+        [
+          selectField("mlsSource", "MLS Source", ["Local IDX", "Team feed", "Office feed", "Manual entry"], "Choose where your listings are pulled from.", "Local IDX"),
+          textField("listingAgentId", "Listing Agent ID", "Enter the ID used to find your listings in the feed.", testUser.id)
+        ],
+        "Connects the MLS source and listing agent ID.",
+        "This helps your listings appear automatically on your website and presentations.",
+        "Listing access depends on MLS connection and role permissions.",
+        true
+      ),
+      subfeature(
         "websites",
         "Websites",
         "Creates the main public website and listing search experience.",
