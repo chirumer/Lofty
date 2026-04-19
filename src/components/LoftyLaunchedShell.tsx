@@ -51,47 +51,47 @@ type UtilityItem = {
 const headerItems: ShellHeaderItem[] = [
   {
     label: "CRM",
-    href: "https://crm.lofty.com/admin/home/lead/list?type=all",
+    href: "/",
     submenu: [
       { label: "People", icon: "icon-people_06", view: "crm-people" },
-      { label: "Segments", icon: "icon-group_01", href: "https://crm.lofty.com/admin/home/lead/segments" },
-      { label: "Tasks", icon: "icon-task_01", href: "https://crm.lofty.com/admin/home/task/list?type=my-all" },
-      { label: "Calendar", icon: "icon-calendar_01", href: "https://crm.lofty.com/admin/home/task/calendar" }
+      { label: "Segments", icon: "icon-group_01", href: "/" },
+      { label: "Tasks", icon: "icon-task_01", href: "/" },
+      { label: "Calendar", icon: "icon-calendar_01", href: "/" }
     ]
   },
   {
     label: "Sales",
-    href: "https://crm.lofty.com/admin/home/listingmgmt",
+    href: "/",
     submenu: [
-      { label: "Showing", icon: "icon-CRM-showing", href: "https://crm.lofty.com/admin/home/task/showing" },
-      { label: "Offers", icon: "icon-offer_01", href: "https://crm.lofty.com/admin/home/offer" },
-      { label: "Transactions", icon: "icon-Transaction", href: "https://crm.lofty.com/admin/home/transaction" }
+      { label: "Showing", icon: "icon-CRM-showing", href: "/" },
+      { label: "Offers", icon: "icon-offer_01", href: "/" },
+      { label: "Transactions", icon: "icon-Transaction", href: "/" }
     ]
   },
   {
     label: "Marketing",
-    href: "https://crm.lofty.com/admin/home/marketing/emails",
+    href: "/",
     submenu: [
-      { label: "Emails", icon: "icon-mail_01", href: "https://crm.lofty.com/admin/home/marketing/emails" },
-      { label: "Text Messages", icon: "icon-message_01", href: "https://crm.lofty.com/admin/home/marketing/texts" },
-      { label: "Social Agent", icon: "icon-social_01", href: "https://crm.lofty.com/admin/home/campaigns/socialMedia" },
-      { label: "Direct Mail", icon: "icon-mailbox_01", href: "https://crm.lofty.com/admin/home/campaigns/printCenter" },
+      { label: "Emails", icon: "icon-mail_01", href: "/" },
+      { label: "Text Messages", icon: "icon-message_01", href: "/" },
+      { label: "Social Agent", icon: "icon-social_01", href: "/" },
+      { label: "Direct Mail", icon: "icon-mailbox_01", href: "/" },
       {
         label: "Lead Generation",
         icon: "icon-lead_capture",
-        href: "https://crm.lofty.com/admin/home/campaigns/dashboard",
+        href: "/",
         submenu: [
-          { label: "Buyer Lead Gen", href: "https://crm.lofty.com/admin/home/campaigns/buyerLeadGen" },
-          { label: "Seller Lead Gen", href: "https://crm.lofty.com/admin/home/campaigns/sellerLeadGen" },
-          { label: "Re-Marketing Ads", href: "https://crm.lofty.com/admin/home/campaigns/remarketingAds" }
+          { label: "Buyer Lead Gen", href: "/" },
+          { label: "Seller Lead Gen", href: "/" },
+          { label: "Re-Marketing Ads", href: "/" }
         ]
       },
-      { label: "Lofty Bloom", icon: "icon-location_03", href: "https://crm.lofty.com/admin/home/LoftyBloom" },
+      { label: "Lofty Bloom", icon: "icon-location_03", href: "/" },
       {
         label: "Brand Awareness",
         icon: "icon-brag",
-        href: "https://crm.lofty.com/admin/home/campaigns/sphereAds",
-        submenu: [{ label: "Local Service Ads", href: "https://crm.lofty.com/admin/home/campaigns/localServiceAds" }]
+        href: "/",
+        submenu: [{ label: "Local Service Ads", href: "/" }]
       }
     ]
   },
@@ -99,34 +99,34 @@ const headerItems: ShellHeaderItem[] = [
     label: "Content",
     submenu: [
       { label: "Websites", icon: "icon-Website1" },
-      { label: "Landing Pages", icon: "icon-site_style", href: "https://crm.lofty.com/admin/home/campaigns/landingPage" },
-      { label: "Lofty Present", icon: "icon-listhome_01", href: "https://crm.lofty.com/admin/home/campaigns/cma" },
-      { label: "Open House Form", icon: "icon-letter_01", href: "https://crm.lofty.com/admin/home/campaigns/openHouse" },
-      { label: "Design Center", icon: "icon-editimage_01", href: "https://crm.lofty.com/admin/home/campaigns/designCenter" }
+      { label: "Landing Pages", icon: "icon-site_style", href: "/" },
+      { label: "Lofty Present", icon: "icon-listhome_01", href: "/" },
+      { label: "Open House Form", icon: "icon-letter_01", href: "/" },
+      { label: "Design Center", icon: "icon-editimage_01", href: "/" }
     ]
   },
   {
     label: "Automation",
-    href: "https://crm.lofty.com/admin/home/campaigns/smartPlan",
+    href: "/",
     submenu: [
-      { label: "Smart Plans", icon: "icon-smart_plan_01", href: "https://crm.lofty.com/admin/home/campaigns/smartPlan" },
-      { label: "Homeowner Agent", icon: "icon-house_17", href: "https://crm.lofty.com/admin/home/smartHomeowner" },
-      { label: "Auto Property Alert", icon: "icon-Vector", href: "https://crm.lofty.com/admin/home/campaigns/autoAlert" },
-      { label: "Text Codes", icon: "icon-message_01", href: "https://crm.lofty.com/admin/home/campaigns/textCode" }
+      { label: "Smart Plans", icon: "icon-smart_plan_01", href: "/" },
+      { label: "Homeowner Agent", icon: "icon-house_17", href: "/" },
+      { label: "Auto Property Alert", icon: "icon-Vector", href: "/" },
+      { label: "Text Codes", icon: "icon-message_01", href: "/" }
     ]
   },
-  { label: "Reporting", href: "https://crm.lofty.com/admin/home/reporting" },
+  { label: "Reporting", href: "/" },
   {
     label: "Marketplace",
-    href: "https://crm.lofty.com/admin/home/marketPlace",
+    href: "/",
     submenu: [
-      { label: "Marketplace", icon: "icon-Marketplace", href: "https://crm.lofty.com/admin/home/marketPlace" },
-      { label: "Integration Center", icon: "icon-integration_01", href: "https://crm.lofty.com/admin/home/integrationCenter" }
+      { label: "Marketplace", icon: "icon-Marketplace", href: "/" },
+      { label: "Integration Center", icon: "icon-integration_01", href: "/" }
     ]
   },
   {
     label: "AI Copilots",
-    href: "https://crm.lofty.com/admin/home/loftyAIOverview",
+    href: "/",
     icon: "icon-AI",
     isAi: true
   }
@@ -159,7 +159,7 @@ const utilityItems: UtilityItem[] = [
     icon: "icon-ai-AI",
     title: "AI Copilots",
     description: "This local clone keeps the utility bar interactive, while the full AI workspace remains outside the merged app shell.",
-    href: "https://crm.lofty.com/admin/home/loftyAIOverview"
+    href: "/"
   },
   {
     id: "dialer",
@@ -194,19 +194,23 @@ const utilityItems: UtilityItem[] = [
     icon: "icon-Settings",
     title: "Settings",
     description: "Settings are outside the merged dashboard scope. This panel keeps the utility bar interactive without reintroducing the legacy runtime.",
-    href: "https://crm.lofty.com/admin/home/usersetting/profile"
+    href: "/"
   }
 ];
 
 const userMenuItems = [
-  { label: "Billing Center", icon: "icon-Billings", href: "https://crm.lofty.com/admin/home/billing" },
+  { label: "Billing Center", icon: "icon-Billings", href: "/" },
   {
     label: "Product Updates",
     icon: "icon-a-ProductUpdates",
     href: "https://help.lofty.com/hc/en-us/categories/201663123-What-s-New-"
   },
-  { label: "Earn Rewards", icon: "icon-earn_reword", href: "https://crm.lofty.com/admin/home/referral" }
+  { label: "Earn Rewards", icon: "icon-earn_reword", href: "/" }
 ];
+
+function isExternalHref(href: string) {
+  return href.startsWith("http://") || href.startsWith("https://");
+}
 
 function dropdownMaskStyle(isOpen: boolean) {
   return {
@@ -244,8 +248,16 @@ function MenuItemAction({
     );
   }
 
+  const external = isExternalHref(href);
+
   return (
-    <a className={className} href={href} rel="noreferrer noopener" target="_blank" {...props}>
+    <a
+      className={className}
+      href={href}
+      rel={external ? "noreferrer noopener" : undefined}
+      target={external ? "_blank" : undefined}
+      {...props}
+    >
       {children}
     </a>
   );
@@ -409,8 +421,13 @@ function UtilityPanel({ item, onClose }: { item: (typeof utilityItems)[number] |
       <div className="frozen-utility-panel__body">
         <p>{item.description}</p>
         {item.href ? (
-          <a className="frozen-utility-panel__action" href={item.href} rel="noreferrer noopener" target="_blank">
-            Open original page
+          <a
+            className="frozen-utility-panel__action"
+            href={item.href}
+            rel={isExternalHref(item.href) ? "noreferrer noopener" : undefined}
+            target={isExternalHref(item.href) ? "_blank" : undefined}
+          >
+            {isExternalHref(item.href) ? "Open original page" : "Open page"}
           </a>
         ) : null}
       </div>
@@ -737,7 +754,12 @@ export default function LoftyLaunchedShell({
                         {userMenuItems.map((item) => (
                           <li key={item.label} {...attrs.user} className="list-item">
                             <div {...attrs.user} className="flex-line">
-                              <a {...attrs.user} href={item.href} rel="noreferrer noopener" target="_blank">
+                              <a
+                                {...attrs.user}
+                                href={item.href}
+                                rel={isExternalHref(item.href) ? "noreferrer noopener" : undefined}
+                                target={isExternalHref(item.href) ? "_blank" : undefined}
+                              >
                                 <i {...attrs.user} className={`icon2017 menu-icon ${item.icon}`}></i>
                                 <span {...attrs.user}>{item.label}</span>
                               </a>
