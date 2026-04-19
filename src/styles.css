@@ -2384,12 +2384,29 @@ textarea::placeholder {
   grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   gap: 20px;
   align-items: stretch;
+  min-height: 0;
+}
+
+.messages-page-banner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 12px 18px;
+}
+
+.messages-page-banner__title {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 .chat-sidebar {
   display: grid;
-  gap: 18px;
+  gap: 14px;
   align-content: start;
+  min-height: 0;
 }
 
 .chat-sidebar-header h1 {
@@ -2405,7 +2422,7 @@ textarea::placeholder {
 
 .chat-contact-list {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .chat-contact-card {
@@ -2413,7 +2430,7 @@ textarea::placeholder {
   grid-template-columns: auto 1fr;
   gap: 12px;
   align-items: center;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: linear-gradient(180deg, #ffffff, #f8fbff);
@@ -2464,7 +2481,7 @@ textarea::placeholder {
 .chat-sidebar-footer,
 .negotiation-action-stack {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .message-feed {
@@ -2477,7 +2494,8 @@ textarea::placeholder {
 
 .chat-main-shell {
   display: flex;
-  min-height: 760px;
+  min-height: 0;
+  height: 100%;
   flex-direction: column;
   overflow: hidden;
 }
@@ -2487,7 +2505,7 @@ textarea::placeholder {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 18px 20px;
+  padding: 14px 16px;
   border-bottom: 1px solid rgba(220, 229, 243, 0.96);
   background: linear-gradient(180deg, #f8fbff, #eef4ff);
 }
@@ -2514,9 +2532,10 @@ textarea::placeholder {
 .message-feed-body {
   flex: 1 1 auto;
   display: grid;
-  gap: 14px;
-  padding: 18px;
+  gap: 12px;
+  padding: 14px 16px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background:
     radial-gradient(circle at top left, rgba(37, 84, 232, 0.06), transparent 20%),
     linear-gradient(180deg, rgba(248, 251, 255, 0.95), rgba(255, 255, 255, 0.96));
@@ -2621,8 +2640,8 @@ textarea::placeholder {
 
 .composer-area {
   display: grid;
-  gap: 14px;
-  padding: 18px;
+  gap: 10px;
+  padding: 14px 16px;
   border-top: 1px solid rgba(220, 229, 243, 0.96);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.98));
 }
@@ -2658,7 +2677,7 @@ textarea::placeholder {
 }
 
 .text-field--composer {
-  min-height: 110px;
+  min-height: 84px;
   resize: vertical;
 }
 
@@ -2687,6 +2706,57 @@ textarea::placeholder {
   border-color: rgba(37, 84, 232, 0.16);
   background: #eef3ff;
   color: var(--primary);
+}
+
+.composer-mic-button,
+.composer-send-button {
+  width: 54px;
+  min-width: 54px;
+  height: 54px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+@media (min-width: 1201px) {
+  .lofty-shell-section--messages {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 10px;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .lofty-shell-section--messages .messages-page-banner {
+    padding: 10px 16px;
+  }
+
+  .lofty-shell-section--messages .overview-strip {
+    gap: 10px;
+    padding: 8px 10px;
+    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  }
+
+  .lofty-shell-section--messages .overview-card {
+    padding: 10px 12px;
+  }
+
+  .lofty-shell-section--messages .overview-card strong {
+    font-size: 1.05rem;
+  }
+
+  .lofty-shell-section--messages .chat-app-layout {
+    height: 100%;
+    gap: 12px;
+  }
+
+  .lofty-shell-section--messages .chat-sidebar {
+    overflow: auto;
+  }
+
+  .lofty-shell-section--messages .chat-main-shell {
+    min-height: 0;
+  }
 }
 
 .icon-button--recording {
@@ -2886,6 +2956,11 @@ textarea::placeholder {
 }
 
 @media (max-width: 680px) {
+  .messages-page-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .message-feed-header,
   .composer-toolbar,
   .timeline-card-header,

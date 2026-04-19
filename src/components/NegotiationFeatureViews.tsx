@@ -2,13 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowUp,
   ArrowRightLeft,
   ChevronRight,
   CircleDot,
-  Mail,
-  MessageSquare,
   Mic,
-  Phone,
   RefreshCcw,
   RotateCcw,
   ShieldAlert,
@@ -525,7 +523,6 @@ export function useNegotiationFeatureState(listingId = DEMO_LISTING_ID): Negotia
 
     return { transcript: body.transcript };
   }
-
   return {
     listing,
     negotiation,
@@ -555,7 +552,6 @@ export function MessagesWorkspace({
 }) {
   const chatProfile = getChatProfile(profile);
   const [draft, setDraft] = useState("");
-  const [messageType, setMessageType] = useState<MessageType>("chat");
   const [composerError, setComposerError] = useState<string | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -566,7 +562,6 @@ export function MessagesWorkspace({
   const chunksRef = useRef<Blob[]>([]);
 
   const activeProfile = getProfileOption(profile);
-  const newestMessage = feature.messages[feature.messages.length - 1] ?? null;
   const currentOfferGap =
     typeof feature.listing.asking_price === "number" && typeof feature.negotiation.current_offer_price === "number"
       ? feature.listing.asking_price - feature.negotiation.current_offer_price
@@ -626,7 +621,7 @@ export function MessagesWorkspace({
         const prior = previous.trim();
         return prior ? `${prior}\n${payload.transcript}` : payload.transcript!;
       });
-      setVoiceStatus("Transcript ready. Review it before sending.");
+      setVoiceStatus("Transcript ready.");
     } catch (transcriptionError) {
       setComposerError(
         transcriptionError instanceof Error ? transcriptionError.message : "Unable to transcribe audio."
@@ -645,7 +640,7 @@ export function MessagesWorkspace({
 
     try {
       setComposerError(null);
-      setVoiceStatus("Listening... click again to stop.");
+      setVoiceStatus("Listening... click the stop icon to finish.");
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -699,7 +694,7 @@ export function MessagesWorkspace({
     const result = await feature.sendMessage({
       senderRole: chatProfile.role,
       content: draft,
-      messageType
+      messageType: "chat"
     });
 
     if (!result.ok) {
@@ -709,7 +704,6 @@ export function MessagesWorkspace({
     }
 
     setDraft("");
-    setMessageType("chat");
     setVoiceStatus(null);
     setIsSending(false);
   }
@@ -726,12 +720,6 @@ export function MessagesWorkspace({
               negotiation conversation.
             </p>
           </div>
-          <div className="negotiation-hero-actions">
-            <button className="secondary-button" onClick={onOpenProfileSwitch} type="button">
-              <ArrowRightLeft size={16} />
-              Switch user
-            </button>
-          </div>
         </section>
 
         <section className="soft-panel negotiation-empty-panel">
@@ -746,42 +734,23 @@ export function MessagesWorkspace({
   }
 
   return (
-    <div className="lofty-shell-section">
-      <section className="builder-header glass-panel">
-        <div>
-          <span className="section-label">Messages</span>
-          <h1>{chatProfile.agentName}&apos;s Negotiation Thread</h1>
-          <p>
-            Chat, inbound email captures, and call summaries all feed the same deal record so the negotiation dashboard
-            stays aligned with the live conversation.
-          </p>
-        </div>
-        <div className="negotiation-hero-actions">
-          <span className="mini-chip">{activeProfile.label}</span>
-          <button className="secondary-button" onClick={onOpenProfileSwitch} type="button">
-            <ArrowRightLeft size={16} />
-            Switch user
-          </button>
-        </div>
-      </section>
+      <div className="lofty-shell-section lofty-shell-section--messages">
+        <section className="soft-panel messages-page-banner">
+          <span className="messages-page-banner__title">Messages</span>
+        </section>
 
       <section className="overview-strip negotiation-overview-strip">
+        <div className="overview-card overview-card--offer">
+          <span>Current Offer</span>
+          <strong>{formatCurrency(feature.negotiation.current_offer_price)}</strong>
+          <p>{currentOfferGap !== null ? `${formatCurrency(currentOfferGap)} below ask` : "Offer not detected yet"}</p>
+        </div>
         <div className="overview-card overview-card--summary">
           <span>Listing</span>
           <strong>{feature.listing.address}</strong>
           <p>
             {feature.listing.bedrooms}BR / {feature.listing.bathrooms}BA at {formatCurrency(feature.listing.asking_price)}
           </p>
-        </div>
-        <div className="overview-card">
-          <span>Current Offer</span>
-          <strong>{formatCurrency(feature.negotiation.current_offer_price)}</strong>
-          <p>{currentOfferGap !== null ? `${formatCurrency(currentOfferGap)} below ask` : "Offer not detected yet"}</p>
-        </div>
-        <div className="overview-card">
-          <span>Latest Activity</span>
-          <strong>{newestMessage ? getMessageTypeLabel(newestMessage.message_type) : "No updates"}</strong>
-          <p>{newestMessage ? formatTimestamp(newestMessage.created_at) : "Start the thread from this workspace."}</p>
         </div>
       </section>
 
@@ -833,14 +802,6 @@ export function MessagesWorkspace({
                   : "Messages and inbound email updates are reloaded automatically and fed back into the negotiation analysis."}
               </p>
             </div>
-
-            <div className="status-box">
-              <p className="metric-card-label">Voice Drafting</p>
-              <p className="helper-text">
-                Record speech, review the transcript, and send it only after you confirm the text in the composer.
-              </p>
-            </div>
-
             <div className="negotiation-action-stack">
               <button className="primary-button" onClick={() => void feature.analyze()} type="button">
                 <RefreshCcw size={16} />
@@ -933,53 +894,6 @@ export function MessagesWorkspace({
           </section>
 
           <section className="composer-area">
-            <div className="composer-header">
-              <div>
-                <span className="metric-card-label">Composer</span>
-                <p className="helper-text">
-                  Send a live chat response, capture an email summary, or log a call transcript update.
-                </p>
-              </div>
-              <span className={getMessageTypeBadgeClass(messageType)}>{getMessageTypeLabel(messageType)}</span>
-            </div>
-
-            {voiceStatus ? (
-              <div className="status-box">
-                <p className="helper-text">{voiceStatus}</p>
-              </div>
-            ) : null}
-
-            <div className="message-type-selector">
-              <button
-                className={messageType === "chat" ? "message-type-button message-type-button--active" : "message-type-button"}
-                onClick={() => setMessageType("chat")}
-                type="button"
-              >
-                <MessageSquare size={15} />
-                Chat
-              </button>
-              <button
-                className={messageType === "email" ? "message-type-button message-type-button--active" : "message-type-button"}
-                onClick={() => setMessageType("email")}
-                type="button"
-              >
-                <Mail size={15} />
-                Email
-              </button>
-              <button
-                className={
-                  messageType === "call_transcript"
-                    ? "message-type-button message-type-button--active"
-                    : "message-type-button"
-                }
-                onClick={() => setMessageType("call_transcript")}
-                type="button"
-              >
-                <Phone size={15} />
-                Call note
-              </button>
-            </div>
-
             <textarea
               value={draft}
               onChange={(event) => {
@@ -987,14 +901,10 @@ export function MessagesWorkspace({
                 setComposerError(null);
               }}
               className="text-field text-field--composer"
-              placeholder={
-                messageType === "chat"
-                  ? "Type a negotiation update, concern, or counter-offer..."
-                  : messageType === "email"
-                    ? "Capture the latest email subject line or summary..."
-                    : "Summarize the latest phone call or voicemail..."
-              }
+              placeholder="Type a negotiation update, concern, or counter-offer..."
             />
+
+            {voiceStatus ? <p className="helper-text">{voiceStatus}</p> : null}
 
             <div className="composer-toolbar">
               <p className="helper-text">
@@ -1002,7 +912,8 @@ export function MessagesWorkspace({
               </p>
               <div className="composer-actions">
                 <button
-                  className={`icon-button${isRecording ? " icon-button--recording" : ""}`}
+                  aria-label={isRecording ? "Stop recording" : "Start recording"}
+                  className={`icon-button composer-mic-button${isRecording ? " icon-button--recording" : ""}`}
                   disabled={feature.isFallback || isSending || isTranscribing}
                   onClick={() => {
                     if (isRecording) {
@@ -1012,19 +923,20 @@ export function MessagesWorkspace({
 
                     void startRecording();
                   }}
-                  type="button"
-                  aria-label={isRecording ? "Stop recording" : "Start recording"}
                   title={isRecording ? "Stop recording" : "Start recording"}
+                  type="button"
                 >
                   {isRecording ? <Square size={16} /> : <Mic size={16} />}
                 </button>
                 <button
-                  className="primary-button"
+                  aria-label={isSending ? "Sending update" : "Send update"}
+                  className="icon-button primary-button composer-send-button"
                   disabled={feature.isFallback || isSending || isRecording || isTranscribing || !draft.trim()}
                   onClick={() => void handleSendMessage()}
+                  title={isSending ? "Sending update" : "Send update"}
                   type="button"
                 >
-                  {isSending ? "Sending..." : "Send update"}
+                  <ArrowUp size={18} />
                 </button>
               </div>
             </div>
