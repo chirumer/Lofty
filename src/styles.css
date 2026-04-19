@@ -3396,6 +3396,16 @@ textarea::placeholder {
   white-space: pre-wrap;
 }
 
+.ai-copilots-message__actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.ai-copilots-message__action {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
 .ai-copilots-panel__loading,
 .ai-copilots-panel__error {
   display: flex;
@@ -3993,6 +4003,8 @@ textarea::placeholder {
 .smartplans-modal-footer {
   border-top: 1px solid #e9eef8;
   border-bottom: 0;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .smartplans-modal-header h2 {
@@ -4071,6 +4083,89 @@ textarea::placeholder {
   align-items: center;
   justify-self: end;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.smartplans-guide-anchor {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.smartplans-guide-anchor--centered {
+  margin: 0 auto 16px;
+}
+
+.smartplans-guide-callout {
+  grid-template-columns: auto 1fr;
+  width: min(360px, 100%);
+}
+
+.smartplans-guide-callout img {
+  width: 86px;
+}
+
+.smartplans-guide-callout .mascot-callout__bubble {
+  max-width: 100%;
+}
+
+.smartplans-guide-callout--index {
+  position: absolute;
+  top: calc(100% + 16px);
+  right: 0;
+  z-index: 24;
+  width: min(360px, calc(100vw - 48px));
+}
+
+.smartplans-guide-callout--modal {
+  flex: 1 1 280px;
+  min-width: 240px;
+}
+
+.smartplans-guide-callout--drawer,
+.smartplans-guide-callout--builder,
+.smartplans-guide-callout--completion {
+  width: min(360px, 100%);
+}
+
+.smartplans-guide-callout--drawer {
+  margin-bottom: 4px;
+}
+
+.smartplans-guide-callout--completion {
+  width: min(320px, 100%);
+}
+
+.smartplans-guide-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.smartplans-guide-copy strong {
+  color: #10203b;
+  font-size: 0.98rem;
+}
+
+.smartplans-guide-copy span {
+  color: #3a4763;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.smartplans-guide-target--active {
+  border-color: rgba(70, 99, 232, 0.42);
+  box-shadow:
+    0 0 0 3px rgba(70, 99, 232, 0.18),
+    0 14px 34px rgba(70, 99, 232, 0.16);
+  transform: translateY(-1px);
+}
+
+.smartplans-option-card--guided {
+  background: linear-gradient(180deg, #f7f9ff, #eef3ff);
+}
+
+.smartplans-drawer-body--guide {
+  padding-bottom: 0;
 }
 
 .smartplans-settings-anchor {
@@ -4365,6 +4460,32 @@ textarea::placeholder {
   color: #9ba4b8;
   box-shadow: 0 10px 26px rgba(51, 62, 95, 0.12);
   cursor: pointer;
+}
+
+.smartplans-back-button:disabled,
+.smartplans-ghost-icon:disabled,
+.smartplans-index-switcher-button:disabled,
+.smartplans-create-dropdown button:disabled,
+.smartplans-option-card:disabled,
+.smartplans-step-choice:disabled,
+.smartplans-plus-node:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  box-shadow: none;
+  transform: none;
+}
+
+.smartplans-create-dropdown button.smartplans-guide-target--active {
+  background: #eef3ff;
+  color: #3150cf;
+}
+
+.smartplans-option-card:disabled {
+  background: #f7f8fb;
+}
+
+.smartplans-plus-node:disabled {
+  background: #eef2f7;
 }
 
 .smartplans-step-stack {
@@ -4797,5 +4918,15 @@ textarea::placeholder {
   .smartplans-table-head,
   .smartplans-table-row {
     grid-template-columns: 1fr;
+  }
+
+  .smartplans-guide-callout--index {
+    position: static;
+    margin-bottom: 14px;
+    width: 100%;
+  }
+
+  .smartplans-guide-callout--modal {
+    width: 100%;
   }
 }

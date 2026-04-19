@@ -22,6 +22,7 @@ type AICopilotsPanelProps = {
   onDraftChange: (value: string) => void;
   onModelChange: (modelId: CopilotModelId) => void;
   onClearChat: () => void;
+  onMessageAction: (actionKind: NonNullable<CopilotChatMessage["action"]>["kind"]) => void;
   onSend: () => void;
   onStartBuilding: () => void;
 };
@@ -37,6 +38,7 @@ export default function AICopilotsPanel({
   onDraftChange,
   onModelChange,
   onClearChat,
+  onMessageAction,
   onSend,
   onStartBuilding
 }: AICopilotsPanelProps) {
@@ -146,6 +148,17 @@ export default function AICopilotsPanel({
                 <span>{formatMessageTime(message.createdAt)}</span>
               </div>
               <p>{message.content}</p>
+              {message.role === "assistant" && message.action ? (
+                <div className="ai-copilots-message__actions">
+                  <button
+                    className="secondary-button ai-copilots-message__action"
+                    type="button"
+                    onClick={() => onMessageAction(message.action!.kind)}
+                  >
+                    {message.action.label}
+                  </button>
+                </div>
+              ) : null}
             </article>
           ))
         )}

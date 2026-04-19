@@ -93,6 +93,20 @@ export type LaunchedShellView =
   | "listings"
   | "websites"
   | "idx-builder";
+export type SmartPlanGuidePhase =
+  | "inactive"
+  | "index-create"
+  | "scope-modal"
+  | "builder-add-trigger"
+  | "trigger-list"
+  | "trigger-detail"
+  | "builder-add-populate-variable"
+  | "action-list-populate-variable"
+  | "action-detail-populate-variable"
+  | "builder-add-auto-email"
+  | "action-list-auto-email"
+  | "action-detail-auto-email"
+  | "completed";
 export type LeadTaskType = "Call" | "Text" | "Email" | "Other";
 export type AppointmentType = "Appointment" | "Showing";
 export type OpportunityType = "High Interest" | "Likely Seller" | "Back to Site";
