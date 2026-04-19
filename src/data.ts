@@ -172,7 +172,7 @@ const launchedNavSubfeatureMeta: Partial<Record<LibraryCardId, Record<string, Pa
     "design-center": { icon: "icon-editimage_01", href: "/" }
   },
   automation: {
-    "smart-plans": { icon: "icon-smart_plan_01", href: "/" },
+    "smart-plans": { icon: "icon-smart_plan_01", view: "automation-smart-plans" },
     "email-automation": { icon: "icon-mail_01", href: "/" },
     "text-automation": { icon: "icon-message_01", href: "/" },
     workflows: { icon: "icon-task_01", href: "/" },
