@@ -19,6 +19,7 @@ import type {
   DashboardPerson,
   DashboardUpdate,
   HotSheetItem,
+  LaunchedListing,
   LaunchedNavItem,
   LeadAppointment,
   LeadTask,
@@ -163,8 +164,8 @@ const launchedNavSubfeatureMeta: Partial<Record<LibraryCardId, Record<string, Pa
     "brand-awareness": { icon: "icon-brag", href: "/" }
   },
   content: {
-    "my-listings": { icon: "icon-listhome_01", href: "/" },
-    websites: { icon: "icon-Website1", href: "/" },
+    "my-listings": { icon: "icon-listhome_01", label: "Listings", view: "listings" },
+    websites: { icon: "icon-Website1", view: "websites" },
     "landing-pages": { icon: "icon-site_style", href: "/" },
     "lofty-present": { icon: "icon-listhome_01", href: "/" },
     "open-house-form": { icon: "icon-letter_01", href: "/" },
@@ -534,17 +535,17 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
     subfeatures: [
       subfeature(
         "my-listings",
-        "My Listings",
-        "Connects your personal and team listings for website and presentation display.",
+        "Listings",
+        "Connects your MLS feed settings and pocket inventory for website and presentation display.",
         nonLenderRoles,
         nonLenderRoles,
         [
-          selectField("mlsSource", "MLS Source", ["Local IDX", "Team feed", "Office feed", "Manual entry"], "Choose where your listings are pulled from.", "Local IDX"),
-          textField("listingAgentId", "Listing Agent ID", "Enter the ID used to find your listings in the feed.", testUser.id)
+          selectField("mlsSource", "MLS Source", ["Local IDX", "Team feed", "Office feed", "Manual entry"], "Choose which MLS feed should supply website inventory.", "Local IDX"),
+          textField("listingAgentId", "Listing Agent ID", "Enter the agent ID used to match listings inside the MLS feed.", testUser.id)
         ],
-        "Connects the MLS source and listing agent ID.",
-        "This helps your listings appear automatically on your website and presentations.",
-        "Listing access depends on MLS connection and role permissions.",
+        "Connects the MLS feed source and listing agent ID.",
+        "This helps MLS feed inventory appear automatically on your website and presentations.",
+        "MLS feed access depends on connection settings and role permissions.",
         true
       ),
       subfeature(
@@ -1259,6 +1260,10 @@ export const listingInsights: ListingInsight[] = [
     trend: "Viewed by 4 warm buyers"
   }
 ];
+
+export function formatListingLocation(listing: Pick<LaunchedListing, "city" | "state" | "zip">) {
+  return `${listing.city}, ${listing.state} ${listing.zip}`;
+}
 
 export const hotSheetItems: HotSheetItem[] = [
   { id: "hs-open-house", label: "Upcoming Open House", count: 12 },

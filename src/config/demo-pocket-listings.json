@@ -1,0 +1,38 @@
+[
+  {
+    "sourceName": "Private Client Circle",
+    "contactName": "Taylor Brooks",
+    "availability": "Showings by approval after 4 PM",
+    "headline": "Quiet pocket listing with a pool house and mountain backdrop",
+    "address": "11822 N Sonoran Vista Court",
+    "city": "Fountain Hills",
+    "state": "AZ",
+    "zip": "85268",
+    "price": 1425000,
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "squareFeet": 3325,
+    "neighborhood": "Sunridge Canyon",
+    "trend": "VIP buyers asked for early access",
+    "imageUrl": "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80",
+    "description": "Off-market opportunity with sunset decks, updated guest quarters, and polished desert landscaping on a cul-de-sac lot."
+  },
+  {
+    "sourceName": "Luxury Office Exclusive",
+    "contactName": "Jordan Ellis",
+    "availability": "Weekend tours only until photos are released",
+    "headline": "Hidden Paradise Valley opportunity before public launch",
+    "address": "6702 E Whisper Rock Road",
+    "city": "Paradise Valley",
+    "state": "AZ",
+    "zip": "85253",
+    "price": 2650000,
+    "bedrooms": 5,
+    "bathrooms": 4.5,
+    "squareFeet": 4680,
+    "neighborhood": "Paradise Hills",
+    "trend": "Two listing-side conversations already underway",
+    "imageUrl": "https://images.unsplash.com/photo-1600573472550-8090b5e0745e?auto=format&fit=crop&w=1200&q=80",
+    "description": "Pocket listing with new landscaping, a detached studio, and a flexible closing timeline for high-intent buyers."
+  }
+]
