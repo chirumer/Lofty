@@ -89,6 +89,7 @@ export type LaunchedShellView =
   | "crm-people"
   | "messages"
   | "negotiation"
+  | "automation-smart-plans"
   | "listings"
   | "websites"
   | "idx-builder";
