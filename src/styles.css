@@ -3820,7 +3820,7 @@ textarea::placeholder {
 
 .smartplans-builder-layout {
   display: grid;
-  grid-template-columns: 420px minmax(0, 1fr) 500px;
+  grid-template-columns: minmax(0, 1fr) 500px;
   min-height: calc(100vh - 240px);
 }
 
@@ -3841,14 +3841,60 @@ textarea::placeholder {
   grid-template-columns: auto 1fr auto;
 }
 
-.smartplans-settings-card,
 .smartplans-drawer {
   background: #ffffff;
   border-right: 1px solid #e5eaf5;
 }
 
-.smartplans-settings-card {
-  padding: 28px 28px 32px;
+.smartplans-settings-popover-card {
+  background: #ffffff;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(72vh, 760px);
+  overflow: auto;
+  padding: 24px 24px 28px;
+  border: 1px solid #e5eaf5;
+  border-radius: 22px;
+  box-shadow: 0 28px 68px rgba(52, 65, 109, 0.2);
+}
+
+.smartplans-builder-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 12px;
+}
+
+.smartplans-settings-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.smartplans-settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #d9e0f3;
+  border-radius: 14px;
+  background: #f8faff;
+  color: #4966e8;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(56, 71, 118, 0.08);
+}
+
+.smartplans-settings-button[aria-expanded="true"] {
+  background: #eef2ff;
+  border-color: #c9d4f5;
+  box-shadow: 0 12px 24px rgba(56, 71, 118, 0.12);
+}
+
+.smartplans-settings-popover {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 25;
 }
 
 .smartplans-settings-header,
@@ -3989,17 +4035,19 @@ textarea::placeholder {
   position: relative;
   min-height: 100%;
   padding: 42px 48px;
+  overflow-x: hidden;
 }
 
 .smartplans-step-chooser {
   position: relative;
   margin: 0 auto 28px;
-  width: 460px;
+  width: min(460px, 100%);
   border-radius: 18px;
   background: #ffffff;
   border: 1px solid #e3e8f6;
   box-shadow: 0 18px 48px rgba(52, 65, 109, 0.16);
   padding: 20px;
+  will-change: transform;
   z-index: 3;
 }
 
@@ -4008,6 +4056,25 @@ textarea::placeholder {
   top: 60px;
   left: 50%;
   transform: translateX(-50%);
+}
+
+.smartplans-step-chooser-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.smartplans-step-chooser--dragging {
+  box-shadow: 0 24px 60px rgba(52, 65, 109, 0.24);
+  z-index: 8;
+}
+
+.smartplans-step-chooser--dragging .smartplans-step-chooser-header {
+  cursor: grabbing;
 }
 
 .smartplans-step-chooser-header strong {
@@ -4019,6 +4086,7 @@ textarea::placeholder {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+  align-items: stretch;
   padding-top: 16px;
 }
 
@@ -4029,12 +4097,21 @@ textarea::placeholder {
   justify-content: center;
   gap: 8px;
   min-height: 94px;
+  min-width: 0;
+  padding: 16px 10px;
   border: 1px dashed #d9e0f3;
   border-radius: 14px;
   background: #f5f8ff;
   color: #4463e6;
   font-size: 1rem;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-word;
   cursor: pointer;
+}
+
+.smartplans-step-choice svg {
+  flex-shrink: 0;
 }
 
 .smartplans-step-choice--condition {
@@ -4088,7 +4165,7 @@ textarea::placeholder {
 }
 
 .smartplans-node {
-  width: 440px;
+  width: min(440px, 100%);
   border-radius: 22px;
   background: #ffffff;
   border: 1px solid #e5eaf5;
@@ -4115,7 +4192,7 @@ textarea::placeholder {
 }
 
 .smartplans-node--end {
-  width: 260px;
+  width: min(260px, 100%);
 }
 
 .smartplans-node--end .smartplans-node-head {
@@ -4191,6 +4268,7 @@ textarea::placeholder {
   display: flex;
   flex-direction: column;
   padding-bottom: 24px;
+  min-width: 0;
 }
 
 .smartplans-drawer-header {
@@ -4382,9 +4460,52 @@ textarea::placeholder {
   justify-content: flex-start;
 }
 
+.chime-website-container.is-utility-expanded .smartplans-builder-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+}
+
+.chime-website-container.is-utility-expanded .smartplans-canvas {
+  padding: 32px 24px;
+}
+
+.chime-website-container.is-utility-expanded .smartplans-settings-popover {
+  right: auto;
+  left: 0;
+}
+
+.chime-website-container.is-utility-expanded .smartplans-step-chooser {
+  width: min(420px, 100%);
+}
+
+.chime-website-container.is-utility-expanded .smartplans-step-chooser-grid {
+  gap: 10px;
+}
+
+.chime-website-container.is-utility-expanded .smartplans-step-choice {
+  font-size: 0.9rem;
+  padding-inline: 8px;
+}
+
+.chime-website-container.is-utility-expanded .smartplans-node {
+  width: min(360px, 100%);
+}
+
+.chime-website-container.is-utility-expanded .smartplans-node--trigger {
+  margin-left: 0;
+  align-self: center;
+}
+
+.chime-website-container.is-utility-expanded .smartplans-node--end {
+  width: min(240px, 100%);
+}
+
+.chime-website-container.is-utility-expanded .smartplans-index-layout {
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
 @media (max-width: 1480px) {
   .smartplans-builder-layout {
-    grid-template-columns: 360px minmax(0, 1fr) 420px;
+    grid-template-columns: minmax(0, 1fr) 420px;
   }
 
   .smartplans-library-grid {
@@ -4399,10 +4520,16 @@ textarea::placeholder {
   }
 
   .smartplans-sidebar,
-  .smartplans-settings-card,
   .smartplans-drawer {
     border-right: 0;
     border-bottom: 1px solid #e5eaf5;
+  }
+
+  .smartplans-settings-popover {
+    position: fixed;
+    top: 96px;
+    left: 12px;
+    right: 12px;
   }
 
   .smartplans-library-grid {
@@ -4416,7 +4543,7 @@ textarea::placeholder {
 
   .smartplans-index-switcher,
   .smartplans-create-box,
-  .smartplans-save-button {
+  .smartplans-builder-actions {
     justify-self: start;
   }
 }
@@ -4424,7 +4551,6 @@ textarea::placeholder {
 @media (max-width: 760px) {
   .smartplans-main-panel,
   .smartplans-library-panel,
-  .smartplans-settings-card,
   .smartplans-canvas,
   .smartplans-drawer,
   .smartplans-sidebar {
@@ -4434,6 +4560,11 @@ textarea::placeholder {
   .smartplans-step-chooser,
   .smartplans-node {
     width: 100%;
+  }
+
+  .smartplans-settings-popover-card {
+    width: auto;
+    max-height: calc(100vh - 128px);
   }
 
   .smartplans-node--trigger {

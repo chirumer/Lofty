@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import {
   ArrowLeft,
   Bell,
@@ -892,6 +892,315 @@ function SmartPlansSection({
   );
 }
 
+function SmartPlansSettingsPanel({
+  builder,
+  onClose,
+  scopeOptions,
+  setBuilder
+}: {
+  builder: SmartPlanDraft;
+  onClose: () => void;
+  scopeOptions: SmartPlanScope[];
+  setBuilder: Dispatch<SetStateAction<SmartPlanDraft | null>>;
+}) {
+  return (
+    <div className="smartplans-settings-popover-card">
+      <div className="smartplans-settings-header">
+        <h2>Settings</h2>
+        <button className="smartplans-ghost-icon" type="button" onClick={onClose} aria-label="Close settings">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="smartplans-setting-block smartplans-setting-block--expanded">
+        <div className="smartplans-setting-title-row">
+          <span>Plan Name</span>
+          <Settings2 size={18} />
+        </div>
+        <div className="smartplans-setting-content">
+          <input
+            value={builder.name}
+            onChange={(event) => setBuilder({ ...builder, name: event.target.value })}
+            placeholder="Plan name"
+          />
+        </div>
+      </div>
+
+      <div className="smartplans-setting-block smartplans-setting-block--expanded">
+        <button className="smartplans-setting-toggle" type="button">
+          <span>Plan Scope Setting</span>
+          <ChevronDown size={18} />
+        </button>
+        <div className="smartplans-setting-content">
+          <select
+            value={builder.scope}
+            onChange={(event) => setBuilder({ ...builder, scope: event.target.value as SmartPlanScope })}
+          >
+            {scopeOptions.map((scope) => (
+              <option key={scope} value={scope}>
+                {scope}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="smartplans-setting-block smartplans-setting-block--expanded">
+        <button className="smartplans-setting-toggle" type="button">
+          <span>Target Lead Type Setting</span>
+          <ChevronDown size={18} />
+        </button>
+        <div className="smartplans-setting-content">
+          <select
+            value={builder.targetLeadTypeMode}
+            onChange={(event) => setBuilder({ ...builder, targetLeadTypeMode: event.target.value as LeadTypeMode })}
+          >
+            {(["Equals To", "Include All", "Include One Of"] as LeadTypeMode[]).map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          <select
+            value={builder.targetLeadTypes[0] ?? ""}
+            onChange={(event) =>
+              setBuilder({
+                ...builder,
+                targetLeadTypes: event.target.value ? [event.target.value] : []
+              })
+            }
+          >
+            <option value="">Select Something...</option>
+            {leadTypes.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          <button
+            className="smartplans-link-button"
+            type="button"
+            onClick={() =>
+              setBuilder((current) => {
+                if (!current) {
+                  return current;
+                }
+                const next = leadTypes.find((type) => !current.targetLeadTypes.includes(type));
+                if (!next) {
+                  return current;
+                }
+                return { ...current, targetLeadTypes: [...current.targetLeadTypes, next] };
+              })
+            }
+          >
+            <Plus size={16} />
+            Add Lead Type
+          </button>
+        </div>
+      </div>
+
+      <div className="smartplans-setting-block smartplans-setting-block--expanded">
+        <button className="smartplans-setting-toggle" type="button">
+          <span>Auto Apply Setting</span>
+          <ChevronDown size={18} />
+        </button>
+        <div className="smartplans-setting-content smartplans-setting-content--compact">
+          <label className="smartplans-inline-check">
+            <input
+              checked={builder.autoApply}
+              type="checkbox"
+              onChange={(event) => setBuilder({ ...builder, autoApply: event.target.checked })}
+            />
+            <span>Auto Apply</span>
+          </label>
+          <label className="smartplans-inline-check">
+            <input
+              checked={builder.autoReapply}
+              type="checkbox"
+              onChange={(event) => setBuilder({ ...builder, autoReapply: event.target.checked })}
+            />
+            <span>Auto Re-apply</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="smartplans-setting-block">
+        <button className="smartplans-setting-toggle" type="button">
+          <span>Auto Pause Setting</span>
+          <ChevronDown size={18} />
+        </button>
+        <div className="smartplans-setting-content smartplans-setting-content--compact">
+          {autoPauseOptions.map((option) => (
+            <label key={option} className="smartplans-inline-check">
+              <input
+                checked={builder.autoPause.includes(option)}
+                type="checkbox"
+                onChange={(event) =>
+                  setBuilder((current) => {
+                    if (!current) {
+                      return current;
+                    }
+                    return {
+                      ...current,
+                      autoPause: event.target.checked
+                        ? [...current.autoPause, option]
+                        : current.autoPause.filter((item) => item !== option)
+                    };
+                  })
+                }
+              />
+              <span>{option}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SmartPlansStepChooser({
+  choices,
+  className = "",
+  dragResetKey,
+  onClose
+}: {
+  choices: Array<{
+    className?: string;
+    disabled?: boolean;
+    icon: ReactNode;
+    label: string;
+    onClick?: () => void;
+  }>;
+  className?: string;
+  dragResetKey: string;
+  onClose: () => void;
+}) {
+  const chooserRef = useRef<HTMLDivElement | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStateRef = useRef<{
+    maxDeltaX: number;
+    maxDeltaY: number;
+    minDeltaX: number;
+    minDeltaY: number;
+    originX: number;
+    originY: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    setDragOffset({ x: 0, y: 0 });
+    setIsDragging(false);
+    dragStateRef.current = null;
+  }, [dragResetKey]);
+
+  useEffect(() => {
+    if (!isDragging) {
+      return;
+    }
+
+    function clamp(value: number, min: number, max: number) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      const dragState = dragStateRef.current;
+      if (!dragState) {
+        return;
+      }
+
+      const nextDeltaX = clamp(event.clientX - dragState.startX, dragState.minDeltaX, dragState.maxDeltaX);
+      const nextDeltaY = clamp(event.clientY - dragState.startY, dragState.minDeltaY, dragState.maxDeltaY);
+
+      setDragOffset({
+        x: dragState.originX + nextDeltaX,
+        y: dragState.originY + nextDeltaY
+      });
+    }
+
+    function handlePointerUp() {
+      dragStateRef.current = null;
+      setIsDragging(false);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointercancel", handlePointerUp);
+    window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [isDragging]);
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("button")) {
+      return;
+    }
+
+    const chooserElement = chooserRef.current;
+    const boundsElement = chooserElement?.closest(".smartplans-canvas-area");
+    if (!(chooserElement instanceof HTMLDivElement) || !(boundsElement instanceof HTMLDivElement)) {
+      return;
+    }
+
+    const chooserRect = chooserElement.getBoundingClientRect();
+    const boundsRect = boundsElement.getBoundingClientRect();
+    const minDeltaX = boundsRect.left - chooserRect.left;
+    const maxDeltaX = boundsRect.right - chooserRect.right;
+    const minDeltaY = boundsRect.top - chooserRect.top;
+    const maxDeltaY = boundsRect.bottom - chooserRect.bottom;
+
+    dragStateRef.current = {
+      maxDeltaX,
+      maxDeltaY,
+      minDeltaX,
+      minDeltaY,
+      originX: dragOffset.x,
+      originY: dragOffset.y,
+      startX: event.clientX,
+      startY: event.clientY
+    };
+    setIsDragging(true);
+    event.preventDefault();
+  }
+
+  const baseTransform = className.includes("smartplans-step-chooser--initial") ? "translateX(-50%)" : "";
+  const dragTransform = dragOffset.x || dragOffset.y ? ` translate(${dragOffset.x}px, ${dragOffset.y}px)` : "";
+  const chooserTransform = `${baseTransform}${dragTransform}`.trim();
+
+  return (
+    <div
+      ref={chooserRef}
+      className={`smartplans-step-chooser ${className} ${isDragging ? "smartplans-step-chooser--dragging" : ""}`.trim()}
+      style={chooserTransform ? { transform: chooserTransform } : undefined}
+    >
+      <div className="smartplans-step-chooser-header" onPointerDown={handlePointerDown}>
+        <strong>Add a Step</strong>
+        <button className="smartplans-ghost-icon" type="button" onClick={onClose}>
+          <X size={18} />
+        </button>
+      </div>
+      <div className="smartplans-step-chooser-grid">
+        {choices.map((choice) => (
+          <button
+            key={choice.label}
+            className={`smartplans-step-choice ${choice.className ?? ""}`.trim()}
+            type="button"
+            disabled={choice.disabled}
+            onClick={choice.onClick}
+          >
+            {choice.icon}
+            {choice.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) {
   const [surface, setSurface] = useState<SmartPlanSurface>("index");
   const [indexTab, setIndexTab] = useState<SmartPlanIndexTab>("plans");
@@ -904,8 +1213,10 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
   const [builder, setBuilder] = useState<SmartPlanDraft | null>(null);
   const [drawer, setDrawer] = useState<DrawerState>({ type: "none" });
   const [stepMenuTarget, setStepMenuTarget] = useState<"initial" | "after-trigger" | number | null>(null);
+  const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
   const [planSearch, setPlanSearch] = useState("");
   const [librarySearch, setLibrarySearch] = useState("");
+  const settingsPopoverAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const scopeOptions = useMemo(() => getScopeOptions(role), [role]);
 
@@ -925,6 +1236,34 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
     return templateCards.filter((template) => `${template.name} ${template.leadTypeSummary}`.toLowerCase().includes(query));
   }, [librarySearch]);
 
+  useEffect(() => {
+    if (!settingsPopoverOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const anchor = settingsPopoverAnchorRef.current;
+      if (!anchor || !(event.target instanceof Node) || anchor.contains(event.target)) {
+        return;
+      }
+      setSettingsPopoverOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSettingsPopoverOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [settingsPopoverOpen]);
+
   function openCreateFlow(mode: "scratch" | "template", template?: SmartPlanTemplate) {
     setPendingCreateMode(mode);
     setPendingTemplate(template ?? null);
@@ -942,6 +1281,7 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
     setBuilder(draft);
     setSurface("builder");
     setScopeModalOpen(false);
+    setSettingsPopoverOpen(false);
     setDrawer({ type: "none" });
     setStepMenuTarget(draft.trigger ? "after-trigger" : "initial");
   }
@@ -970,6 +1310,7 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
 
     setSurface("index");
     setIndexTab("plans");
+    setSettingsPopoverOpen(false);
     setDrawer({ type: "none" });
     setStepMenuTarget(null);
   }
@@ -1113,6 +1454,48 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
     setStepMenuTarget(null);
   }
 
+  const initialStepChoices = [
+    {
+      className: "smartplans-step-choice--trigger",
+      icon: <Target size={18} />,
+      label: "Trigger",
+      onClick: () => setDrawer({ type: "trigger-list" })
+    },
+    {
+      className: "smartplans-step-choice--disabled",
+      disabled: true,
+      icon: <Clock3 size={18} />,
+      label: "Condition"
+    },
+    {
+      className: "smartplans-step-choice--disabled",
+      disabled: true,
+      icon: <Workflow size={18} />,
+      label: "Action"
+    }
+  ];
+
+  const followupStepChoices = [
+    {
+      className: "smartplans-step-choice--disabled",
+      disabled: true,
+      icon: <Target size={18} />,
+      label: "Trigger"
+    },
+    {
+      className: "smartplans-step-choice--condition",
+      icon: <Clock3 size={18} />,
+      label: "Condition",
+      onClick: () => setDrawer({ type: "condition-list" })
+    },
+    {
+      className: "smartplans-step-choice--action",
+      icon: <Workflow size={18} />,
+      label: "Action",
+      onClick: () => setDrawer({ type: "action-list" })
+    }
+  ];
+
   if (surface === "builder" && builder) {
     const availableDrawerVariables =
       drawer.type === "action-detail"
@@ -1127,192 +1510,56 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
             onClick={() => {
               setSurface("index");
               setDrawer({ type: "none" });
+              setSettingsPopoverOpen(false);
             }}
           >
             <ArrowLeft size={20} />
           </button>
           <h1>Create Smart Plan</h1>
-          <button className="smartplans-save-button" onClick={saveCurrentPlan}>
-            Save Smart Plan
-          </button>
+          <div className="smartplans-builder-actions">
+            <div className="smartplans-settings-anchor" ref={settingsPopoverAnchorRef}>
+              <button
+                className="smartplans-settings-button"
+                type="button"
+                aria-expanded={settingsPopoverOpen}
+                aria-label="Open smart plan settings"
+                onClick={() => setSettingsPopoverOpen((current) => !current)}
+              >
+                <Settings2 size={18} />
+              </button>
+              {settingsPopoverOpen ? (
+                <div className="smartplans-settings-popover" role="dialog" aria-label="Smart plan settings">
+                  <SmartPlansSettingsPanel
+                    builder={builder}
+                    onClose={() => setSettingsPopoverOpen(false)}
+                    scopeOptions={scopeOptions}
+                    setBuilder={setBuilder}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <button
+              className="smartplans-save-button"
+              onClick={() => {
+                saveCurrentPlan();
+                setSettingsPopoverOpen(false);
+              }}
+            >
+              Save Smart Plan
+            </button>
+          </div>
         </header>
 
         <div className="smartplans-builder-layout">
-          <aside className="smartplans-settings-card">
-            <div className="smartplans-settings-header">
-              <h2>Settings</h2>
-              <LayoutGrid size={18} />
-            </div>
-
-            <div className="smartplans-setting-block smartplans-setting-block--expanded">
-              <div className="smartplans-setting-title-row">
-                <span>Plan Name</span>
-                <Settings2 size={18} />
-              </div>
-              <div className="smartplans-setting-content">
-                <input
-                  value={builder.name}
-                  onChange={(event) => setBuilder({ ...builder, name: event.target.value })}
-                  placeholder="Plan name"
-                />
-              </div>
-            </div>
-
-            <div className="smartplans-setting-block smartplans-setting-block--expanded">
-              <button className="smartplans-setting-toggle" type="button">
-                <span>Plan Scope Setting</span>
-                <ChevronDown size={18} />
-              </button>
-              <div className="smartplans-setting-content">
-                <select
-                  value={builder.scope}
-                  onChange={(event) => setBuilder({ ...builder, scope: event.target.value as SmartPlanScope })}
-                >
-                  {scopeOptions.map((scope) => (
-                    <option key={scope} value={scope}>
-                      {scope}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="smartplans-setting-block smartplans-setting-block--expanded">
-              <button className="smartplans-setting-toggle" type="button">
-                <span>Target Lead Type Setting</span>
-                <ChevronDown size={18} />
-              </button>
-              <div className="smartplans-setting-content">
-                <select
-                  value={builder.targetLeadTypeMode}
-                  onChange={(event) => setBuilder({ ...builder, targetLeadTypeMode: event.target.value as LeadTypeMode })}
-                >
-                  {(["Equals To", "Include All", "Include One Of"] as LeadTypeMode[]).map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={builder.targetLeadTypes[0] ?? ""}
-                  onChange={(event) =>
-                    setBuilder({
-                      ...builder,
-                      targetLeadTypes: event.target.value ? [event.target.value] : []
-                    })
-                  }
-                >
-                  <option value="">Select Something...</option>
-                  {leadTypes.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  className="smartplans-link-button"
-                  type="button"
-                  onClick={() =>
-                    setBuilder((current) => {
-                      if (!current) {
-                        return current;
-                      }
-                      const next = leadTypes.find((type) => !current.targetLeadTypes.includes(type));
-                      if (!next) {
-                        return current;
-                      }
-                      return { ...current, targetLeadTypes: [...current.targetLeadTypes, next] };
-                    })
-                  }
-                >
-                  <Plus size={16} />
-                  Add Lead Type
-                </button>
-              </div>
-            </div>
-
-            <div className="smartplans-setting-block smartplans-setting-block--expanded">
-              <button className="smartplans-setting-toggle" type="button">
-                <span>Auto Apply Setting</span>
-                <ChevronDown size={18} />
-              </button>
-              <div className="smartplans-setting-content smartplans-setting-content--compact">
-                <label className="smartplans-inline-check">
-                  <input
-                    checked={builder.autoApply}
-                    type="checkbox"
-                    onChange={(event) => setBuilder({ ...builder, autoApply: event.target.checked })}
-                  />
-                  <span>Auto Apply</span>
-                </label>
-                <label className="smartplans-inline-check">
-                  <input
-                    checked={builder.autoReapply}
-                    type="checkbox"
-                    onChange={(event) => setBuilder({ ...builder, autoReapply: event.target.checked })}
-                  />
-                  <span>Auto Re-apply</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="smartplans-setting-block">
-              <button className="smartplans-setting-toggle" type="button">
-                <span>Auto Pause Setting</span>
-                <ChevronDown size={18} />
-              </button>
-              <div className="smartplans-setting-content smartplans-setting-content--compact">
-                {autoPauseOptions.map((option) => (
-                  <label key={option} className="smartplans-inline-check">
-                    <input
-                      checked={builder.autoPause.includes(option)}
-                      type="checkbox"
-                      onChange={(event) =>
-                        setBuilder((current) => {
-                          if (!current) {
-                            return current;
-                          }
-                          return {
-                            ...current,
-                            autoPause: event.target.checked
-                              ? [...current.autoPause, option]
-                              : current.autoPause.filter((item) => item !== option)
-                          };
-                        })
-                      }
-                    />
-                    <span>{option}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </aside>
-
           <div className="smartplans-canvas-area">
             <div className="smartplans-canvas">
               {!builder.trigger ? (
-                <div className="smartplans-step-chooser smartplans-step-chooser--initial">
-                  <div className="smartplans-step-chooser-header">
-                    <strong>Add a Step</strong>
-                    <button className="smartplans-ghost-icon" type="button" onClick={() => setStepMenuTarget(null)}>
-                      <X size={18} />
-                    </button>
-                  </div>
-                  <div className="smartplans-step-chooser-grid">
-                    <button className="smartplans-step-choice smartplans-step-choice--trigger" type="button" onClick={() => setDrawer({ type: "trigger-list" })}>
-                      <Target size={18} />
-                      Trigger
-                    </button>
-                    <button className="smartplans-step-choice smartplans-step-choice--disabled" type="button" disabled>
-                      <Clock3 size={18} />
-                      Condition
-                    </button>
-                    <button className="smartplans-step-choice smartplans-step-choice--disabled" type="button" disabled>
-                      <Workflow size={18} />
-                      Action
-                    </button>
-                  </div>
-                </div>
+                <SmartPlansStepChooser
+                  choices={initialStepChoices}
+                  className="smartplans-step-chooser--initial"
+                  dragResetKey="initial-step-chooser"
+                  onClose={() => setStepMenuTarget(null)}
+                />
               ) : (
                 <div className="smartplans-flow-column">
                   <article className="smartplans-node smartplans-node--trigger smartplans-node--interactive" onClick={openTriggerEditor}>
@@ -1342,28 +1589,11 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                   </button>
 
                   {stepMenuTarget === "after-trigger" ? (
-                    <div className="smartplans-step-chooser">
-                      <div className="smartplans-step-chooser-header">
-                        <strong>Add a Step</strong>
-                        <button className="smartplans-ghost-icon" type="button" onClick={() => setStepMenuTarget(null)}>
-                          <X size={18} />
-                        </button>
-                      </div>
-                      <div className="smartplans-step-chooser-grid">
-                        <button className="smartplans-step-choice smartplans-step-choice--disabled" type="button" disabled>
-                          <Target size={18} />
-                          Trigger
-                        </button>
-                        <button className="smartplans-step-choice smartplans-step-choice--condition" type="button" onClick={() => setDrawer({ type: "condition-list" })}>
-                          <Clock3 size={18} />
-                          Condition
-                        </button>
-                        <button className="smartplans-step-choice smartplans-step-choice--action" type="button" onClick={() => setDrawer({ type: "action-list" })}>
-                          <Workflow size={18} />
-                          Action
-                        </button>
-                      </div>
-                    </div>
+                    <SmartPlansStepChooser
+                      choices={followupStepChoices}
+                      dragResetKey="after-trigger-step-chooser"
+                      onClose={() => setStepMenuTarget(null)}
+                    />
                   ) : null}
 
                   {builder.steps.map((step, index) => (
@@ -1400,28 +1630,11 @@ export default function SmartPlansWorkspace({ role }: { role: RoleDefinition }) 
                         <Plus size={20} />
                       </button>
                       {stepMenuTarget === index ? (
-                        <div className="smartplans-step-chooser">
-                          <div className="smartplans-step-chooser-header">
-                            <strong>Add a Step</strong>
-                            <button className="smartplans-ghost-icon" type="button" onClick={() => setStepMenuTarget(null)}>
-                              <X size={18} />
-                            </button>
-                          </div>
-                          <div className="smartplans-step-chooser-grid">
-                            <button className="smartplans-step-choice smartplans-step-choice--disabled" type="button" disabled>
-                              <Target size={18} />
-                              Trigger
-                            </button>
-                            <button className="smartplans-step-choice smartplans-step-choice--condition" type="button" onClick={() => setDrawer({ type: "condition-list" })}>
-                              <Clock3 size={18} />
-                              Condition
-                            </button>
-                            <button className="smartplans-step-choice smartplans-step-choice--action" type="button" onClick={() => setDrawer({ type: "action-list" })}>
-                              <Workflow size={18} />
-                              Action
-                            </button>
-                          </div>
-                        </div>
+                        <SmartPlansStepChooser
+                          choices={followupStepChoices}
+                          dragResetKey={`step-${index}-chooser`}
+                          onClose={() => setStepMenuTarget(null)}
+                        />
                       ) : null}
                     </div>
                   ))}
