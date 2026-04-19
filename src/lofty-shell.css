@@ -69,7 +69,7 @@ img {
 .crm-only-menu .display-cell > .menu-dropdown-header > .com-dropdown {
   left: 0;
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 8px);
   z-index: 40;
 }
 
@@ -91,9 +91,9 @@ img {
 }
 
 .lofty-nav-submenu__flyout {
-  left: calc(100% - 6px);
+  left: calc(100% - 2px);
   position: absolute;
-  top: -10px;
+  top: -4px;
   z-index: 30;
 }
 
@@ -138,12 +138,25 @@ img {
   align-items: center;
   display: flex;
   justify-content: center;
+  position: relative;
 }
 
 .right-menu-user-box .com-dropdownbox {
   display: flex;
   justify-content: center;
   width: 100%;
+}
+
+.lofty-user-menu-backdrop {
+  background: transparent;
+  border: 0;
+  bottom: 0;
+  cursor: default;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 50;
 }
 
 .right-menu-user-box .com-dropdown-body {
@@ -157,6 +170,20 @@ img {
 
 .right-menu-user-box .right-panel-avatar {
   margin: 0 auto;
+}
+
+.lofty-user-menu-action {
+  align-items: center;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.lofty-user-menu-action .icon2017 {
+  margin-right: 10px;
 }
 
 .content-section {

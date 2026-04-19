@@ -19,6 +19,7 @@ import type {
   DashboardPerson,
   DashboardUpdate,
   HotSheetItem,
+  LaunchedNavItem,
   LeadAppointment,
   LeadTask,
   LeadViewId,
@@ -30,11 +31,13 @@ import type {
   PromptConfigStore,
   PromptFieldDefinition,
   PromptTarget,
+  RoleDashboardPreferences,
   RoleDefinition,
   RoleId,
   SubfeatureDefinition
 } from "./types";
 import testUser from "./config/test-user.json";
+import roleDashboardDefaults from "./config/role-dashboard-defaults.json";
 
 const allRoles: RoleId[] = [
   "company-owner",
@@ -124,6 +127,79 @@ export const topNavItems: Array<{ id: LibraryCardId; label: string }> = [
   { id: "marketplace", label: "Marketplace" },
   { id: "ai-copilots", label: "AI Copilots" }
 ];
+
+const roleDashboardPreferenceMap = roleDashboardDefaults as Record<RoleId, RoleDashboardPreferences>;
+
+const launchedNavCardMeta: Partial<Record<LibraryCardId, Pick<LaunchedNavItem, "href" | "icon" | "isAi">>> = {
+  crm: { href: "/" },
+  sales: { href: "/" },
+  marketing: { href: "/" },
+  content: { href: "/" },
+  automation: { href: "/" },
+  reporting: { href: "/" },
+  marketplace: { href: "/" },
+  "ai-copilots": { href: "/", icon: "icon-AI", isAi: true }
+};
+
+const launchedNavSubfeatureMeta: Partial<Record<LibraryCardId, Record<string, Partial<LaunchedNavItem>>>> = {
+  crm: {
+    people: { icon: "icon-people_06", view: "crm-people" },
+    segments: { icon: "icon-group_01", href: "/" },
+    tasks: { icon: "icon-task_01", href: "/" },
+    calendar: { icon: "icon-calendar_01", href: "/" }
+  },
+  sales: {
+    showing: { icon: "icon-CRM-showing", href: "/" },
+    offers: { icon: "icon-offer_01", href: "/" },
+    transactions: { icon: "icon-Transaction", href: "/" }
+  },
+  marketing: {
+    emails: { icon: "icon-mail_01", href: "/" },
+    "text-messages": { icon: "icon-message_01", href: "/" },
+    "social-agent": { icon: "icon-social_01", href: "/" },
+    "direct-mail": { icon: "icon-mailbox_01", href: "/" },
+    "lead-generation": { icon: "icon-lead_capture", href: "/" },
+    "lofty-bloom": { icon: "icon-location_03", href: "/" },
+    "brand-awareness": { icon: "icon-brag", href: "/" }
+  },
+  content: {
+    "my-listings": { icon: "icon-listhome_01", href: "/" },
+    websites: { icon: "icon-Website1", href: "/" },
+    "landing-pages": { icon: "icon-site_style", href: "/" },
+    "lofty-present": { icon: "icon-listhome_01", href: "/" },
+    "open-house-form": { icon: "icon-letter_01", href: "/" },
+    "design-center": { icon: "icon-editimage_01", href: "/" }
+  },
+  automation: {
+    "smart-plans": { icon: "icon-smart_plan_01", href: "/" },
+    "email-automation": { icon: "icon-mail_01", href: "/" },
+    "text-automation": { icon: "icon-message_01", href: "/" },
+    workflows: { icon: "icon-task_01", href: "/" },
+    "property-alerts": { icon: "icon-Vector", href: "/" },
+    "ai-workflows": { icon: "icon-AI", href: "/" }
+  },
+  reporting: {
+    "business-summary": { href: "/" },
+    "agent-performance": { href: "/" },
+    "source-performance": { href: "/" },
+    "activity-metrics": { href: "/" },
+    "site-traffic": { href: "/" },
+    "email-accountability": { href: "/" }
+  },
+  marketplace: {
+    marketplace: { icon: "icon-Marketplace", href: "/" },
+    "integration-center": { icon: "icon-integration_01", href: "/" }
+  },
+  "ai-copilots": {
+    "ai-assistant": { icon: "icon-AI", href: "/" },
+    "sales-agent": { icon: "icon-AI", href: "/" },
+    "social-agent-ai": { icon: "icon-social_01", href: "/" },
+    "homeowner-agent": { icon: "icon-house_17", href: "/" },
+    "ai-workflow-copilot": { icon: "icon-AI", href: "/" },
+    "website-building-agent": { icon: "icon-Website1", href: "/" },
+    "agent-studio": { icon: "icon-AI", href: "/" }
+  }
+};
 
 export const roleDefinitions: RoleDefinition[] = [
   {
@@ -456,6 +532,21 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
     tip: "If you only build one public-facing tab early on, make it this one.",
     lockExplanation: "Content setup is for the roles that own websites and lead capture surfaces.",
     subfeatures: [
+      subfeature(
+        "my-listings",
+        "My Listings",
+        "Connects your personal and team listings for website and presentation display.",
+        nonLenderRoles,
+        nonLenderRoles,
+        [
+          selectField("mlsSource", "MLS Source", ["Local IDX", "Team feed", "Office feed", "Manual entry"], "Choose where your listings are pulled from.", "Local IDX"),
+          textField("listingAgentId", "Listing Agent ID", "Enter the ID used to find your listings in the feed.", testUser.id)
+        ],
+        "Connects the MLS source and listing agent ID.",
+        "This helps your listings appear automatically on your website and presentations.",
+        "Listing access depends on MLS connection and role permissions.",
+        true
+      ),
       subfeature(
         "websites",
         "Websites",
@@ -883,7 +974,7 @@ export const presetDefinitions: PresetDefinition[] = [
     name: "Office Admin Setup",
     description: "Prioritizes day-to-day office operations and reporting.",
     roleIds: ["office-admin"],
-    recommendedCards: ["crm", "sales", "automation", "reporting"]
+    recommendedCards: ["crm", "sales", "content", "automation", "reporting"]
   },
   {
     id: "lender-setup",
@@ -897,14 +988,14 @@ export const presetDefinitions: PresetDefinition[] = [
     name: "Advanced Marketing Setup",
     description: "Adds the public-facing and growth tabs first.",
     roleIds: ["company-owner", "company-admin", "office-owner", "office-admin", "agent-user"],
-    recommendedCards: ["content", "marketing", "automation", "ai-copilots"]
+    recommendedCards: ["crm", "sales", "content", "marketing", "automation", "reporting", "ai-copilots"]
   },
   {
     id: "minimal-launch-setup",
     name: "Minimal Launch Setup",
     description: "Keeps launch tight with only the minimum required tabs.",
     roleIds: allRoles,
-    recommendedCards: ["crm", "sales", "content"]
+    recommendedCards: ["crm", "sales", "content", "automation", "reporting"]
   }
 ];
 
@@ -1212,42 +1303,14 @@ export function buildInitialToggleStore(roleId: RoleId): Partial<Record<LibraryC
   return Object.fromEntries(
     libraryCardDefinitions.map((card) => [
       card.id,
-      Object.fromEntries(
-        card.subfeatures.map((item) => [
-          item.id,
-          item.allowedRoles.includes(roleId) ? item.defaultEnabled || item.requiredFor.includes(roleId) : false
-        ])
-      )
+      Object.fromEntries(card.subfeatures.map((item) => [item.id, false]))
     ])
   ) as Partial<Record<LibraryCardId, CardToggleStore>>;
 }
 
-export function buildInitialConfigStore(roleId: RoleId): Partial<Record<LibraryCardId, PromptConfigStore>> {
+export function buildInitialConfigStore(_roleId: RoleId): Partial<Record<LibraryCardId, PromptConfigStore>> {
   return Object.fromEntries(
-    libraryCardDefinitions.map((card) => [
-      card.id,
-      Object.fromEntries(
-        card.subfeatures
-          .filter((item) => item.allowedRoles.includes(roleId) && item.requiredFor.includes(roleId))
-          .map((item) => [
-            item.id,
-            Object.fromEntries(
-              item.promptFields.map((field) => {
-                if (field.defaultValue !== undefined) {
-                  return [field.id, field.defaultValue];
-                }
-                if (field.type === "select") {
-                  return [field.id, field.options?.[0] ?? ""];
-                }
-                if (field.type === "toggle") {
-                  return [field.id, true];
-                }
-                return [field.id, field.placeholder ?? `${item.name} setup`];
-              })
-            )
-          ])
-      )
-    ])
+    libraryCardDefinitions.map((card) => [card.id, {}])
   ) as Partial<Record<LibraryCardId, PromptConfigStore>>;
 }
 
@@ -1267,6 +1330,108 @@ export function buildPromptDefaults(promptTarget: PromptTarget): Record<string, 
       return [field.id, field.placeholder ?? `${subfeature.name} setup`];
     })
   );
+}
+
+export function getRoleDashboardPreferences(roleId: RoleId): RoleDashboardPreferences {
+  return (
+    roleDashboardPreferenceMap[roleId] ?? {
+      builtCards: getRecommendedCards(roleId),
+      enabledSubfeatures: {}
+    }
+  );
+}
+
+function getRoleEnabledSubfeatureIds(roleId: RoleId, cardId: LibraryCardId) {
+  return new Set(getRoleDashboardPreferences(roleId).enabledSubfeatures[cardId] ?? []);
+}
+
+export function buildAutoselectedCardStates(roleId: RoleId): Partial<Record<LibraryCardId, CardState>> {
+  const recommendedCardIds = new Set(getRoleDashboardPreferences(roleId).builtCards);
+  return Object.fromEntries(
+    libraryCardDefinitions.map((card) => [
+      card.id,
+      recommendedCardIds.has(card.id) && card.allowedRoles.includes(roleId) ? "built" : "not-started"
+    ])
+  ) as Partial<Record<LibraryCardId, CardState>>;
+}
+
+export function buildAutoselectedToggleStore(roleId: RoleId): Partial<Record<LibraryCardId, CardToggleStore>> {
+  return Object.fromEntries(
+    libraryCardDefinitions.map((card) => {
+      const enabledSubfeatureIds = getRoleEnabledSubfeatureIds(roleId, card.id);
+      const subfeatureToggles: CardToggleStore = {};
+      card.subfeatures.forEach((subfeature) => {
+        subfeatureToggles[subfeature.id] =
+          subfeature.allowedRoles.includes(roleId) && enabledSubfeatureIds.has(subfeature.id);
+      });
+      return [card.id, subfeatureToggles];
+    })
+  ) as Partial<Record<LibraryCardId, CardToggleStore>>;
+}
+
+export function buildAutoselectedConfigStore(roleId: RoleId): Partial<Record<LibraryCardId, PromptConfigStore>> {
+  const preferences = getRoleDashboardPreferences(roleId);
+  return Object.fromEntries(
+    libraryCardDefinitions.map((card) => {
+      const subfeatureConfigs: PromptConfigStore = {};
+      const enabledSubfeatureIds = getRoleEnabledSubfeatureIds(roleId, card.id);
+      const configOverrides = preferences.subfeatureConfigOverrides?.[card.id] ?? {};
+      const subfeaturesToConfigure = card.subfeatures.filter(
+        (item) => item.allowedRoles.includes(roleId) && enabledSubfeatureIds.has(item.id)
+      );
+
+      subfeaturesToConfigure.forEach((subfeature) => {
+        if (subfeature.promptFields.length > 0) {
+          subfeatureConfigs[subfeature.id] = {
+            ...buildPromptDefaults({ cardId: card.id, subfeatureId: subfeature.id }),
+            ...(configOverrides[subfeature.id] ?? {})
+          };
+        }
+      });
+      return [card.id, subfeatureConfigs];
+    })
+  ) as Partial<Record<LibraryCardId, PromptConfigStore>>;
+}
+
+export function buildLaunchedNavItems(
+  launchedCards: Array<{ card: LibraryCardDefinition; enabledSubfeatures: SubfeatureDefinition[] }>
+): LaunchedNavItem[] {
+  const launchedCardMap = new Map(launchedCards.map((item) => [item.card.id, item]));
+
+  const navItems: Array<LaunchedNavItem | null> = topNavItems
+    .map((navItem) => {
+      const launchedCard = launchedCardMap.get(navItem.id);
+      if (!launchedCard) {
+        return null;
+      }
+
+      const submenu = launchedCard.enabledSubfeatures
+        .map((subfeature) => {
+          const metadata = launchedNavSubfeatureMeta[launchedCard.card.id]?.[subfeature.id] ?? {};
+          return {
+            label: metadata.label ?? subfeature.name,
+            icon: metadata.icon,
+            href: metadata.view ? undefined : metadata.href ?? "/",
+            view: metadata.view
+          } satisfies LaunchedNavItem;
+        })
+        .filter((item) => item.label);
+
+      if (submenu.length === 0) {
+        return null;
+      }
+
+      const topLevelMetadata = launchedNavCardMeta[navItem.id] ?? {};
+      return {
+        label: navItem.label,
+        href: topLevelMetadata.href ?? "/",
+        icon: topLevelMetadata.icon,
+        isAi: topLevelMetadata.isAi,
+        submenu
+      } satisfies LaunchedNavItem;
+    });
+
+  return navItems.filter((item): item is LaunchedNavItem => item !== null);
 }
 
 export function cardHasConfiguredRequiredSubfeatures(snapshot: OnboardingSnapshot, card: LibraryCardDefinition, roleId: RoleId) {
