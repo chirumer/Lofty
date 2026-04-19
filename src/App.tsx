@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -21,7 +23,6 @@ import {
   GripVertical,
   Layers3,
   Lock,
-  Menu,
   Rocket,
   Search,
   Sparkles,
@@ -43,8 +44,7 @@ import {
   isCardRequiredForRole,
   libraryCardDefinitions,
   roleDefinitions,
-  roleSelectionCopy,
-  topNavItems
+  roleSelectionCopy
 } from "./data";
 import type {
   CardState,
@@ -453,26 +453,11 @@ function App() {
 
   return (
     <div className="app-shell">
-      <TopNavigation />
       <main className="page-shell">
         <div className="builder-shell">
           <header className="builder-header">
             <div>
-              <p className="section-kicker">Lofty Setup Builder</p>
-              <h1>Build the platform card by card</h1>
-              <p>
-                Drag one library card into the workspace, turn on the subfeatures you want, add the required setup
-                details, then build the card before launching.
-              </p>
-            </div>
-            <div className="builder-header-actions">
-              <button className="secondary-button mobile-only" onClick={() => setMobileLibraryOpen(true)}>
-                <Menu size={16} />
-                Cards
-              </button>
-              <button className="secondary-button" onClick={resetBuilder}>
-                Change role
-              </button>
+              <h1>Build your platform</h1>
             </div>
           </header>
 
@@ -622,32 +607,6 @@ function App() {
   );
 }
 
-function TopNavigation() {
-  return (
-    <header className="top-nav">
-      <div className="brand-mark">
-        <div className="brand-logo">
-          <span className="brand-cut" />
-        </div>
-        <div className="brand-copy">
-          <strong>Lofty</strong>
-          <span>Setup Studio</span>
-        </div>
-      </div>
-      <nav className="nav-links" aria-label="Primary">
-        {topNavItems.map((item) => (
-          <a key={item.id} href="#" onClick={(event) => event.preventDefault()}>
-            {item.label}
-          </a>
-        ))}
-      </nav>
-      <div className="nav-actions">
-        <button className="nav-chip">Guided launch</button>
-      </div>
-    </header>
-  );
-}
-
 function RoleSelectionScreen({ onContinue }: { onContinue: (role: RoleDefinition) => void }) {
   const [draftRoleId, setDraftRoleId] = useState<RoleId | null>(null);
   const draftRole = draftRoleId ? getRoleById(draftRoleId) : null;
@@ -663,33 +622,9 @@ function RoleSelectionScreen({ onContinue }: { onContinue: (role: RoleDefinition
           </div>
         </div>
 
-        <div className="setup-window-header">
-          <div className="brand-mark">
-            <div className="brand-logo">
-              <span className="brand-cut" />
-            </div>
-            <div className="brand-copy brand-copy--single">
-              <strong>Lofty</strong>
-            </div>
-          </div>
-
-          <nav className="window-nav" aria-label="Setup sections">
-            {topNavItems.map((item) => (
-              <a key={item.id} href="#" onClick={(event) => event.preventDefault()}>
-                {item.label}
-              </a>
-            ))}
-          </nav>
-
-          <div className="window-nav-accent">
-            <Sparkles size={14} />
-            <span>AI Copilots</span>
-          </div>
-        </div>
-
         <div className="setup-window-body">
           <div className="selection-heading">
-            <h1>Who are you setting this up for?</h1>
+            <h1>Choose your role</h1>
           </div>
 
           <div className="role-grid role-grid--selection">
@@ -728,11 +663,6 @@ function RoleSelectionScreen({ onContinue }: { onContinue: (role: RoleDefinition
             Continue
             <ArrowRight size={16} />
           </button>
-
-          <p className="selection-footnote">
-            Pick the role that best matches how you plan to use this account. The setup will be customized based on your
-            choice.
-          </p>
         </div>
       </div>
     </section>
@@ -1347,59 +1277,57 @@ function LaunchSuccessScreen({
   return (
     <section className="launched-site">
       <header className="launched-site-header">
-        <div className="brand-mark">
+        <div className="brand-mark launched-brand-mark">
           <div className="brand-logo">
             <span className="brand-cut" />
           </div>
-          <div className="brand-copy">
+          <div className="brand-copy brand-copy--single">
             <strong>Lofty</strong>
-            <span>Setup Studio</span>
           </div>
         </div>
 
-        <nav className="launched-nav" aria-label="Built website sections">
-          {launchedCards.map(({ card, enabledSubfeatures }) => (
-            <div
-              key={card.id}
-              className={`launched-nav-item ${activeCardGroup?.card.id === card.id ? "launched-nav-item--active" : ""}`}
-              onMouseEnter={() => {
-                setActiveCardId(card.id);
-                setActiveSubfeatureId(enabledSubfeatures[0]?.id ?? null);
-              }}
-            >
-              <button
-                className="launched-nav-trigger"
-                onClick={() => {
-                  setActiveCardId(card.id);
-                  setActiveSubfeatureId(enabledSubfeatures[0]?.id ?? null);
-                }}
-              >
-                {card.label}
-              </button>
-
-              <div className="launched-nav-dropdown">
-                {enabledSubfeatures.map((subfeature) => (
+        {launchedCards.length ? (
+          <nav className="launched-nav" aria-label="Website navigation">
+            {launchedCards.map(({ card, enabledSubfeatures }) => {
+              const active = activeCardId === card.id;
+              return (
+                <div key={card.id} className={`launched-nav-item ${active ? "launched-nav-item--active" : ""}`}>
                   <button
-                    key={subfeature.id}
-                    className={`launched-dropdown-item ${activeSubfeature?.id === subfeature.id ? "launched-dropdown-item--active" : ""}`}
+                    type="button"
+                    className="launched-nav-trigger"
                     onClick={() => {
                       setActiveCardId(card.id);
-                      setActiveSubfeatureId(subfeature.id);
+                      setActiveSubfeatureId(enabledSubfeatures[0]?.id ?? null);
                     }}
                   >
-                    {subfeature.name}
+                    {card.label}
                   </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </nav>
 
-        <div className="success-actions">
-          <button className="primary-button" onClick={onReset}>
-            Start another setup
-          </button>
-        </div>
+                  {enabledSubfeatures.length ? (
+                    <div className="launched-nav-dropdown">
+                      {enabledSubfeatures.map((subfeature) => {
+                        const selected = activeCardId === card.id && activeSubfeatureId === subfeature.id;
+                        return (
+                          <button
+                            key={subfeature.id}
+                            type="button"
+                            className={`launched-dropdown-item ${selected ? "launched-dropdown-item--active" : ""}`}
+                            onClick={() => {
+                              setActiveCardId(card.id);
+                              setActiveSubfeatureId(subfeature.id);
+                            }}
+                          >
+                            {subfeature.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </nav>
+        ) : null}
       </header>
 
       <div className="launched-site-body">
@@ -1412,6 +1340,11 @@ function LaunchSuccessScreen({
                 ? `${activeCardGroup.card.label} is live with the subfeatures you enabled during setup.`
                 : `The required cards are built, and ${role.name.toLowerCase()} users can now work inside the setup you assembled.`}
             </p>
+            <div className="success-actions launched-stage-actions">
+              <button className="secondary-button launched-reset-button" onClick={onReset}>
+                Start another setup
+              </button>
+            </div>
           </div>
         </article>
 
