@@ -27,7 +27,6 @@ import {
   Circle,
   ExternalLink,
   HelpCircle,
-  LayoutGrid,
   Mail,
   MessageSquare,
   Layers3,
@@ -127,6 +126,44 @@ type PocketListingFormValues = {
   description: string;
   enabled: boolean;
 };
+
+type DashboardWorkflowTask = {
+  id: string;
+  title: string;
+  personName: string;
+  timeLabel: string;
+  plannedStartMinutes: number;
+  durationLabel: string;
+  taskType: "Call" | "Text" | "Email" | "Other" | "Appointment" | "Showing";
+  dueState: "overdue" | "today";
+  dueLabel: string;
+  priorityScore: number;
+  reason: string;
+  context: string;
+  detailSummary: string;
+  suggestedScript: string;
+  nextStep: string;
+  interestedListing: string;
+  contactLine: string;
+  statusTone: "urgent" | "action" | "watch";
+  statusLabel: string;
+  metadata: string[];
+  hasMeetingPrep: boolean;
+  transactionStatus: string | null;
+  appointmentLabel: string | null;
+  isScheduledEvent?: boolean;
+};
+
+function parseClockTime(label: string) {
+  const match = label.match(/(\d{1,2}):(\d{2})\s?(AM|PM)/i);
+  if (!match) {
+    return null;
+  }
+  const hours = Number(match[1]) % 12;
+  const minutes = Number(match[2]);
+  const meridiem = match[3].toUpperCase();
+  return (meridiem === "PM" ? hours + 12 : hours) * 60 + minutes;
+}
 
 type ContentEditorState =
   | {
@@ -1509,9 +1546,6 @@ function LaunchSuccessScreen({
   const people = useMemo(() => getDashboardPeopleForRole(role.id), [role.id]);
   const peopleViewItems = getPeopleViewList(peopleViewId, role.id);
   const activeDemoAccount = getProfileOption(activeDemoProfile);
-  const greetingName = testUser.name;
-  const hour = new Date().getHours();
-  const greetingLabel = hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening";
 
   const newLeads = people.filter((person) => person.isNewLead).slice(0, 3);
   const keepInTouchLeads = people.filter((person) => person.keepInTouch).slice(0, 4);
@@ -1525,12 +1559,6 @@ function LaunchSuccessScreen({
     .flatMap((person) => person.tasks.map((task) => ({ ...task, personName: person.name })))
     .filter((task) => !task.completed)
     .slice(0, 5);
-  const taskCounts = {
-    Call: tasks.filter((task) => task.type === "Call").length,
-    Text: tasks.filter((task) => task.type === "Text").length,
-    Email: tasks.filter((task) => task.type === "Email").length,
-    Other: tasks.filter((task) => task.type === "Other").length
-  };
   const appointments = people
     .flatMap((person) =>
       person.appointments.map((appointment) => ({
@@ -1571,19 +1599,6 @@ function LaunchSuccessScreen({
   ];
   const canOpenListings = launchedSubfeatureIds.has("my-listings");
   const canOpenWebsites = launchedSubfeatureIds.has("websites");
-  const widgetAvailability = {
-    newLeads: launchedSubfeatureIds.has("people"),
-    opportunities:
-      launchedSubfeatureIds.has("showing") ||
-      launchedSubfeatureIds.has("offers") ||
-      launchedSubfeatureIds.has("transactions"),
-    keepInTouch: launchedSubfeatureIds.has("people") || launchedSubfeatureIds.has("segments"),
-    transactions: launchedSubfeatureIds.has("transactions"),
-    tasks: launchedSubfeatureIds.has("tasks"),
-    appointments: launchedSubfeatureIds.has("calendar") || launchedSubfeatureIds.has("showing"),
-    listings: canOpenListings,
-    hotSheets: launchedSubfeatureIds.has("websites")
-  };
 
   useEffect(() => {
     if (activeView === "crm-people" && !launchedSubfeatureIds.has("people")) {
@@ -1750,39 +1765,23 @@ function LaunchSuccessScreen({
             <div className="dashboard-page">
               <div className="dashboard-page-header">
                 <div>
-                  <h1>
-                    👋 {greetingLabel}, {greetingName}!
-                  </h1>
-                  <div className="dashboard-subtitle-row">
-                    <span>My Dashboard</span>
-                    <ChevronDown size={14} />
-                  </div>
-                </div>
-                <div className="dashboard-header-actions">
-                  <button className="dashboard-filter-chip">
-                    Today&apos;s Priorities
-                    <ChevronDown size={14} />
-                  </button>
-                  <button className="dashboard-grid-button" aria-label="Dashboard layout">
-                    <LayoutGrid size={16} />
-                  </button>
+                  <h1>👋 Hi, Ryan!</h1>
                 </div>
               </div>
 
               <DashboardHome
                 updates={dashboardUpdates}
+                people={people}
                 newLeads={newLeads}
                 keepInTouchLeads={keepInTouchLeads}
                 opportunityLeads={opportunityLeads}
                 opportunityCounts={opportunityCounts}
                 tasks={tasks}
-                taskCounts={taskCounts}
                 appointments={appointments}
                 showings={showings}
                 transactions={transactions}
                 listings={enabledListings}
                 hotSheets={hotSheetItems}
-                widgetAvailability={widgetAvailability}
               />
             </div>
           </div>
@@ -1871,20 +1870,20 @@ function LaunchSuccessScreen({
 
 function DashboardHome({
   updates,
+  people,
   newLeads,
   keepInTouchLeads,
   opportunityLeads,
   opportunityCounts,
   tasks,
-  taskCounts,
   appointments,
   showings,
   transactions,
   listings,
-  hotSheets,
-  widgetAvailability
+  hotSheets
 }: {
   updates: typeof dashboardUpdates;
+  people: DashboardPerson[];
   newLeads: DashboardPerson[];
   keepInTouchLeads: DashboardPerson[];
   opportunityLeads: DashboardPerson[];
@@ -1894,281 +1893,758 @@ function DashboardHome({
     backToSite: number;
   };
   tasks: Array<{ id: string; type: string; title: string; timeLabel: string; personName: string }>;
-  taskCounts: Record<"Call" | "Text" | "Email" | "Other", number>;
   appointments: Array<{ id: string; title: string; timeLabel: string; personName: string; incomplete?: boolean }>;
   showings: Array<{ id: string; title: string; timeLabel: string; personName: string; incomplete?: boolean }>;
   transactions: Array<{ id: string; address: string; status: string; checklistCount: number; personName: string }>;
   listings: LaunchedListing[];
   hotSheets: typeof hotSheetItems;
-  widgetAvailability: {
-    newLeads: boolean;
-    opportunities: boolean;
-    keepInTouch: boolean;
-    transactions: boolean;
-    tasks: boolean;
-    appointments: boolean;
-    listings: boolean;
-    hotSheets: boolean;
-  };
 }) {
   const [scheduleTab, setScheduleTab] = useState<"appointments" | "showings">("appointments");
-  const scheduleItems = scheduleTab === "appointments" ? appointments : showings;
-  const scheduleTotal = scheduleItems.length;
-  const scheduleIncomplete = scheduleItems.filter((item) => item.incomplete).length;
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]);
+  const [deferredTaskIds, setDeferredTaskIds] = useState<string[]>([]);
+  const [promotedSoonIds, setPromotedSoonIds] = useState<string[]>([]);
+
   const untouchedCount = newLeads.filter((lead) => lead.untouched).length;
   const transactionNearDeadline = transactions.filter((item) => item.status === "Near Deadline").length;
   const transactionExpired = transactions.filter((item) => item.status === "Expired").length;
+  const scheduleItems = scheduleTab === "appointments" ? appointments : showings;
+  const sortedScheduleItems = [...scheduleItems].sort((left, right) => {
+    const leftTime = parseClockTime(left.timeLabel) ?? Number.MAX_SAFE_INTEGER;
+    const rightTime = parseClockTime(right.timeLabel) ?? Number.MAX_SAFE_INTEGER;
+    return leftTime - rightTime;
+  });
+  const scheduleTotal = scheduleItems.length;
+  const scheduleIncomplete = scheduleItems.filter((item) => item.incomplete).length;
+  const enabledListingsPreview = listings.slice(0, 3);
+  const hotSheetPreview = hotSheets.slice(0, 4);
 
-  return (
-    <div className="dashboard-grid">
-      <DashboardWidget className="dashboard-widget--updates" title="New Updates" actions={<span>Announcements</span>}>
-        <div className="update-list">
-          {updates.map((update) => (
-            <div key={update.id} className="update-item">
-              <div className={`update-thumb update-thumb--${update.accent}`} />
-              <div className="update-copy">
-                <strong>{update.title}</strong>
-                <p>{update.description}</p>
-              </div>
-            </div>
-          ))}
+  const peopleByName = useMemo(() => new Map(people.map((person) => [person.name, person])), [people]);
+
+  const workflowTasks = useMemo(() => {
+    const parseTimeLabel = (label: string) => parseClockTime(label);
+
+    const formatMinutes = (minutes: number) => {
+      const normalized = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60);
+      const hour24 = Math.floor(normalized / 60);
+      const mins = normalized % 60;
+      const meridiem = hour24 >= 12 ? "PM" : "AM";
+      const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+      return `${hour12}:${String(mins).padStart(2, "0")} ${meridiem}`;
+    };
+
+    const inferDurationMinutes = (taskType: DashboardWorkflowTask["taskType"]) => {
+      switch (taskType) {
+        case "Call":
+          return 15;
+        case "Text":
+          return 10;
+        case "Email":
+          return 20;
+        case "Appointment":
+          return 45;
+        case "Showing":
+          return 60;
+        default:
+          return 30;
+      }
+    };
+
+    const scheduledEvents: DashboardWorkflowTask[] = people
+      .flatMap((person) =>
+        person.appointments
+          .filter((appointment) => appointment.incomplete)
+          .map((appointment, index) => {
+            const startMinutes = parseTimeLabel(appointment.timeLabel) ?? 9 * 60 + index * 60;
+            const durationMinutes = inferDurationMinutes(appointment.type);
+            return {
+              id: `schedule-${appointment.id}`,
+              title: appointment.title,
+              personName: person.name,
+              timeLabel: formatMinutes(startMinutes),
+              plannedStartMinutes: startMinutes,
+              durationLabel: `${durationMinutes} min`,
+              taskType: appointment.type,
+              dueState: "today" as const,
+              dueLabel: appointment.type === "Showing" ? "Showing today" : "Meeting today",
+              priorityScore: 300 + person.score,
+              reason:
+                appointment.type === "Showing"
+                  ? "A showing is already booked, so prep and confirmation come before everything else."
+                  : "This appointment is time-bound, so it should anchor the start of the workflow.",
+              context: `${person.stage} · ${person.source} · score ${person.score}`,
+              detailSummary: `${person.communicationSummary} ${person.lastActivity ?? ""}`.trim(),
+              suggestedScript: `Hi ${person.name}, confirming we are still set for ${appointment.title.toLowerCase()} at ${appointment.timeLabel}. Let me know if anything changed before we begin.`,
+              nextStep: "Confirm the meeting, prep the context, and send anything they need before it starts.",
+              interestedListing: person.interestedListing,
+              contactLine: `${person.phone} · ${person.email}`,
+              statusTone: "watch" as const,
+              statusLabel: appointment.type,
+              metadata: [person.roles.join(" · "), person.lastReply],
+              hasMeetingPrep: Boolean(appointment.incomplete),
+              transactionStatus: person.transaction?.status ?? null,
+              appointmentLabel: `${appointment.type} · ${appointment.timeLabel}`,
+              isScheduledEvent: true
+            };
+          })
+      )
+      .sort((left, right) => {
+        const leftTime = parseTimeLabel(left.appointmentLabel?.split(" · ")[1] ?? left.timeLabel) ?? 0;
+        const rightTime = parseTimeLabel(right.appointmentLabel?.split(" · ")[1] ?? right.timeLabel) ?? 0;
+        return leftTime - rightTime;
+      });
+
+    const taskItems = tasks
+      .map((task, index) => {
+        const person = peopleByName.get(task.personName);
+        if (!person) {
+          return null;
+        }
+        const taskType = task.type as DashboardWorkflowTask["taskType"];
+
+        const activeAppointment = person.appointments.find((appointment) => appointment.incomplete);
+        const activeTransaction = person.transaction;
+        const hasHighIntent = Boolean(person.opportunities?.includes("High Interest"));
+        const hasSellerSignal = Boolean(person.opportunities?.includes("Likely Seller"));
+        const isUntouched = Boolean(person.untouched);
+        const isExpiredDeal = activeTransaction?.status === "Expired";
+        const isPrepHeavy = Boolean(activeAppointment?.incomplete);
+
+        const explicitTime = parseTimeLabel(task.timeLabel);
+        let priorityScore = person.score + Math.max(24 - index * 2, 0);
+        let dueState: "overdue" | "today" = "today";
+        let dueLabel = "Do today";
+
+        if (isUntouched) {
+          priorityScore += 28;
+          dueState = "overdue";
+          dueLabel = "First touch overdue";
+        }
+
+        if (isExpiredDeal) {
+          priorityScore += 26;
+          dueState = "overdue";
+          dueLabel = "Deal at risk";
+        } else if (activeTransaction?.status === "Near Deadline") {
+          priorityScore += 18;
+        }
+
+        if (taskType === "Call") {
+          priorityScore += 14;
+        }
+        if (hasHighIntent) {
+          priorityScore += 16;
+        }
+        if (hasSellerSignal) {
+          priorityScore += 10;
+        }
+        if (isPrepHeavy) {
+          priorityScore += 8;
+        }
+        if (task.timeLabel === "Anytime") {
+          priorityScore -= 4;
+        }
+        if (explicitTime !== null) {
+          priorityScore += 10;
+        }
+
+        const reasonParts = [
+          isUntouched ? "No follow-up has gone out yet." : person.communicationSummary,
+          hasHighIntent ? "They are actively engaging with listings." : person.lastActivity,
+          isExpiredDeal
+            ? "There is an expired transaction that needs intervention."
+            : activeTransaction?.status === "Near Deadline"
+              ? `${activeTransaction.checklistCount} checklist items are near deadline.`
+              : activeAppointment?.incomplete
+                ? `${activeAppointment.type} needs prep today.`
+                : null
+        ].filter(Boolean) as string[];
+
+        const suggestedScript =
+          taskType === "Call"
+            ? `Hi ${person.name}, this is Ryan from Lofty. I wanted to follow up on ${person.interestedListing.toLowerCase()} and help you with the next step today.`
+            : taskType === "Text"
+              ? `Hi ${person.name}, I pulled the update you asked for on ${person.interestedListing}. If you want, I can send the next best options right away.`
+              : taskType === "Email"
+                ? `Hi ${person.name}, here is a quick recap for ${person.savedSearch ?? person.interestedListing}. I included the next listings and what I recommend you look at first.`
+                : `Prepare the deliverable for ${person.name}, then send a quick confirmation so the conversation keeps moving.`;
+
+        const nextStep =
+          taskType === "Call"
+            ? "Confirm needs, book the next conversation, and log objections."
+            : taskType === "Text"
+              ? "Send the text, watch for a reply, and promote the lead if they respond."
+              : taskType === "Email"
+                ? "Send the recap and schedule a reminder if there is no reply by end of day."
+                : "Finish the packet, then trigger a follow-up touch from the same thread.";
+
+        return {
+          id: task.id,
+          title: task.title,
+          personName: person.name,
+          timeLabel: explicitTime !== null ? formatMinutes(explicitTime) : task.timeLabel,
+          plannedStartMinutes: explicitTime ?? -1,
+          durationLabel: `${inferDurationMinutes(taskType)} min`,
+          taskType,
+          dueState,
+          dueLabel,
+          priorityScore,
+          reason: reasonParts[0] ?? "This item is ready for action today.",
+          context: `${person.stage} · ${person.source} · score ${person.score}`,
+          detailSummary: reasonParts.slice(0, 2).join(" "),
+          suggestedScript,
+          nextStep,
+          interestedListing: person.interestedListing,
+          contactLine: `${person.phone} · ${person.email}`,
+          statusTone: dueState === "overdue" ? "urgent" : hasHighIntent ? "action" : "watch",
+          statusLabel: dueState === "overdue" ? "Overdue" : taskType,
+          metadata: [
+            person.roles.join(" · "),
+            person.segments?.[0] ?? person.leadType,
+            person.lastReply
+          ],
+          hasMeetingPrep: isPrepHeavy,
+          transactionStatus: activeTransaction?.status ?? null,
+          appointmentLabel: activeAppointment ? `${activeAppointment.type} · ${activeAppointment.timeLabel}` : null
+        };
+      })
+      .filter(Boolean) as DashboardWorkflowTask[];
+
+    const sortedTasks = taskItems.sort((left, right) => right.priorityScore - left.priorityScore);
+    const occupiedStarts = new Set(
+      scheduledEvents
+        .map((item) => parseTimeLabel(item.appointmentLabel?.split(" · ")[1] ?? item.timeLabel))
+        .filter((value): value is number => value !== null)
+    );
+    let fallbackMinutes = 9 * 60 + 15;
+
+    const scheduledTasks = sortedTasks.map((item) => {
+      if (parseTimeLabel(item.timeLabel) !== null) {
+        return item;
+      }
+
+      while (occupiedStarts.has(fallbackMinutes)) {
+        fallbackMinutes += 45;
+      }
+      const assignedMinutes = fallbackMinutes;
+      occupiedStarts.add(assignedMinutes);
+      fallbackMinutes += 45;
+
+      return {
+        ...item,
+        timeLabel: formatMinutes(assignedMinutes),
+        plannedStartMinutes: assignedMinutes
+      };
+    });
+
+    return [...scheduledEvents, ...scheduledTasks].sort((left, right) => {
+      if (left.plannedStartMinutes !== right.plannedStartMinutes) {
+        return left.plannedStartMinutes - right.plannedStartMinutes;
+      }
+      if (left.isScheduledEvent && !right.isScheduledEvent) return -1;
+      if (!left.isScheduledEvent && right.isScheduledEvent) return 1;
+      return right.priorityScore - left.priorityScore;
+    });
+  }, [people, peopleByName, tasks]);
+
+  const completedSet = useMemo(() => new Set(completedTaskIds), [completedTaskIds]);
+  const deferredSet = useMemo(() => new Set(deferredTaskIds), [deferredTaskIds]);
+  const promotedSet = useMemo(() => new Set(promotedSoonIds), [promotedSoonIds]);
+
+  const todayFlow = workflowTasks.filter((task) => !deferredSet.has(task.id));
+
+  const deferredTasks = workflowTasks
+    .filter((task) => deferredSet.has(task.id) && !completedSet.has(task.id))
+    .map((task) => ({
+      id: `deferred-${task.id}`,
+      sourceTaskId: task.id,
+      title: task.title,
+      subtitle: `${task.personName} · ${task.context}`,
+      dueLabel: "Deferred from today",
+      reason: "Return this to today’s flow when you have capacity.",
+      tone: "watch" as const
+    }));
+
+  const mustDoSoonBase = [
+    ...transactions
+      .filter((transaction) => transaction.status === "Near Deadline")
+      .map((transaction) => ({
+        id: `soon-transaction-${transaction.id}`,
+        title: `Review ${transaction.address}`,
+        subtitle: `${transaction.personName} · ${transaction.checklistCount} items near deadline`,
+        dueLabel: "Before next deadline",
+        reason: "Protect the deal before checklist pressure turns urgent.",
+        tone: "watch" as const
+      })),
+    ...keepInTouchLeads.map((lead) => ({
+      id: `soon-relationship-${lead.id}`,
+      title: `Follow up with ${lead.name}`,
+      subtitle: `${lead.keepInTouch === "Birthday" ? lead.birthdayLabel : lead.followUpLabel} · ${lead.roles.join(" · ")}`,
+      dueLabel: lead.keepInTouch === "Birthday" ? "This week" : "Soon",
+      reason: "Keep warm relationships moving without crowding today’s queue.",
+      tone: "neutral" as const
+    })),
+    ...opportunityLeads
+      .filter((lead) => !todayFlow.some((task) => task.personName === lead.name))
+      .map((lead) => ({
+        id: `soon-opportunity-${lead.id}`,
+        title: `Work ${lead.name}'s ${lead.opportunities?.[0]?.toLowerCase() ?? "signal"}`,
+        subtitle: `${lead.interestedListing} · score ${lead.score}`,
+        dueLabel: "Next up",
+        reason: "High-signal behavior is worth pulling into today if capacity opens up.",
+        tone: "action" as const
+      }))
+  ];
+
+  const mustDoSoon = [...mustDoSoonBase.filter((item) => !promotedSet.has(item.id)), ...deferredTasks].slice(0, 6);
+  const promotedSoonItems = mustDoSoonBase.filter((item) => promotedSet.has(item.id) && !completedSet.has(item.id));
+
+  const promotedIntoToday: DashboardWorkflowTask[] = promotedSoonItems.map((item, index) => ({
+    id: item.id,
+    title: item.title,
+    personName: item.subtitle.split(" · ")[0] ?? "Shared workflow",
+    timeLabel: item.dueLabel,
+    plannedStartMinutes: 16 * 60 + index * 30,
+    durationLabel: "20 min",
+    taskType: "Other" as const,
+    dueState: "today" as const,
+    dueLabel: "Promoted",
+    priorityScore: 999 - index,
+    reason: item.reason,
+    context: item.subtitle,
+    detailSummary: item.reason,
+    suggestedScript: `Use this promoted item to move ${item.subtitle.split(" · ")[0] ?? "the workflow"} forward while it is top of mind.`,
+    nextStep: "Handle the action, then either complete it or return it to the soon list.",
+    interestedListing: item.subtitle,
+    contactLine: "Use the linked CRM record for exact contact details.",
+    statusTone: item.tone === "action" ? "action" as const : "watch" as const,
+    statusLabel: item.dueLabel,
+    metadata: [item.reason],
+    hasMeetingPrep: false,
+    transactionStatus: null,
+    appointmentLabel: null,
+    isScheduledEvent: false
+  }));
+
+  const visibleTodayFlow = [...promotedIntoToday, ...todayFlow]
+    .sort((left, right) => {
+      const leftCompleted = completedSet.has(left.id) ? 1 : 0;
+      const rightCompleted = completedSet.has(right.id) ? 1 : 0;
+      if (leftCompleted !== rightCompleted) {
+        return leftCompleted - rightCompleted;
+      }
+      return left.plannedStartMinutes - right.plannedStartMinutes || right.priorityScore - left.priorityScore;
+    })
+    .slice(0, 8);
+  const nextBestAction = visibleTodayFlow.find((task) => !completedSet.has(task.id)) ?? null;
+
+  useEffect(() => {
+    if (!visibleTodayFlow.length) {
+      setExpandedTaskId(null);
+      return;
+    }
+    if (
+      !expandedTaskId ||
+      !visibleTodayFlow.some((task) => task.id === expandedTaskId) ||
+      completedSet.has(expandedTaskId)
+    ) {
+      setExpandedTaskId(nextBestAction?.id ?? visibleTodayFlow[0].id);
+    }
+  }, [completedSet, expandedTaskId, nextBestAction, visibleTodayFlow]);
+
+  const moveToNextTask = (taskId: string) => {
+    const currentIndex = visibleTodayFlow.findIndex((task) => task.id === taskId);
+    const nextTask =
+      visibleTodayFlow.slice(currentIndex + 1).find((task) => !completedSet.has(task.id)) ??
+      visibleTodayFlow.find((task) => !completedSet.has(task.id)) ??
+      null;
+    setExpandedTaskId(nextTask ? nextTask.id : null);
+  };
+
+  const handleCompleteTask = (taskId: string) => {
+    setCompletedTaskIds((current) => (current.includes(taskId) ? current : [...current, taskId]));
+    if (taskId.startsWith("soon-")) {
+      setPromotedSoonIds((current) => current.filter((id) => id !== taskId));
+    }
+  };
+
+  const handleDeferTask = (taskId: string) => {
+    if (taskId.startsWith("soon-")) {
+      setPromotedSoonIds((current) => current.filter((id) => id !== taskId));
+      moveToNextTask(taskId);
+      return;
+    }
+    setDeferredTaskIds((current) => (current.includes(taskId) ? current : [...current, taskId]));
+    moveToNextTask(taskId);
+  };
+
+  const handlePromoteSoon = (itemId: string) => {
+    setPromotedSoonIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
+    setExpandedTaskId(itemId);
+  };
+
+  const backgroundPanels = [
+    {
+      id: "pipeline",
+      title: "Pipeline Overview",
+      summary: "Keep the pipeline in view without stealing attention from active work.",
+      content: (
+        <div className="workflow-metric-grid">
+          <WorkflowMetric label="Hot leads" value={opportunityCounts.highInterest} tone="amber" />
+          <WorkflowMetric label="Deals at risk" value={transactionExpired} tone="red" />
+          <WorkflowMetric label="Pipeline" value={transactions.length + opportunityLeads.length} tone="blue" />
         </div>
-      </DashboardWidget>
-
-      <DashboardWidget
-        title="Today's New Leads"
-        actions={
-          <div className="widget-icon-actions">
-            <HelpCircle size={15} />
-            <Settings2 size={15} />
-          </div>
-        }
-      >
-        {widgetAvailability.newLeads ? (
-          <>
-            <div className="dashboard-progress-track">
-              <div className="dashboard-progress-fill" style={{ width: `${Math.min((untouchedCount / Math.max(newLeads.length, 1)) * 100, 100)}%` }} />
-            </div>
-            <p className="widget-summary">Total: {newLeads.length} ({untouchedCount} untouched)</p>
-            <div className="widget-section-title">Leads waiting to be contacted</div>
-            <div className="lead-list">
-              {newLeads.map((lead) => (
-                <div key={lead.id} className="lead-list-item">
-                  <div>
-                    <strong>{lead.name}</strong>
-                    <span>{lead.leadType}</span>
-                    <small>{lead.source}</small>
-                  </div>
-                  <div className="lead-score-badge">{lead.score}</div>
+      )
+    },
+    {
+      id: "inventory",
+      title: "Inventory Watch",
+      summary: "Keep listing movement accessible for conversations, not dominant.",
+      content: (
+        <div className="workflow-background-split">
+          <div className="workflow-background-stack">
+            {enabledListingsPreview.map((listing) => (
+              <div key={listing.id} className="workflow-background-row">
+                <div>
+                  <strong>{listing.address}</strong>
+                  <span>{formatListingLocation(listing)}</span>
                 </div>
-              ))}
-            </div>
-            <button className="widget-link-row">
-              View All
-              <ChevronRight size={14} />
-            </button>
-          </>
-        ) : (
-          <EmptyWidgetState message="Build CRM > People to surface new lead triage here." />
-        )}
-      </DashboardWidget>
-
-      <DashboardWidget title="Today's Opportunities" actions={<HelpCircle size={15} />}>
-        {widgetAvailability.opportunities ? (
-          <>
-            <div className="widget-metric-row">
-              <WidgetMetric label="High Interest" value={opportunityCounts.highInterest} />
-              <WidgetMetric label="Likely Sellers" value={opportunityCounts.likelySellers} />
-              <WidgetMetric label="Back to Site" value={opportunityCounts.backToSite} />
-            </div>
-            <div className="opportunity-list">
-              {opportunityLeads.map((lead) => (
-                <div key={lead.id} className="opportunity-item">
-                  <div>
-                    <strong>{lead.name}</strong>
-                    <span>{lead.lastActivity}</span>
-                  </div>
-                  <div className="chip-wrap">
-                    {lead.opportunities?.map((tag) => (
-                      <span key={tag} className="mini-chip mini-chip--success">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <EmptyWidgetState message="Build Sales subfeatures to surface high-intent opportunities here." />
-        )}
-      </DashboardWidget>
-
-      <DashboardWidget title="Need Keep In Touch" actions={<HelpCircle size={15} />}>
-        {widgetAvailability.keepInTouch ? (
-          <>
-            <div className="widget-metric-row">
-              <WidgetMetric label="Birthday" value={keepInTouchLeads.filter((lead) => lead.keepInTouch === "Birthday").length} />
-              <WidgetMetric label="Follow-Up" value={keepInTouchLeads.filter((lead) => lead.keepInTouch === "Follow-Up").length} />
-            </div>
-            <div className="compact-list">
-              {keepInTouchLeads.map((lead) => (
-                <div key={lead.id} className="compact-list-item">
-                  <div>
-                    <strong>{lead.name}</strong>
-                    <span>{lead.roles.join(" · ")}</span>
-                    <small>{lead.birthdayLabel ?? lead.followUpLabel}</small>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <EmptyWidgetState message="Build CRM relationship features to see follow-up reminders here." />
-        )}
-      </DashboardWidget>
-
-      <DashboardWidget
-        title="Transactions"
-        actions={
-          <div className="widget-icon-actions">
-            <HelpCircle size={15} />
-            <Settings2 size={15} />
-          </div>
-        }
-      >
-        {widgetAvailability.transactions ? (
-          <>
-            <div className="widget-metric-row">
-              <WidgetMetric label="Near Deadline" value={transactionNearDeadline} />
-              <WidgetMetric label="Expired" value={transactionExpired} />
-            </div>
-            <div className="compact-list">
-              {transactions.map((transaction) => (
-                <div key={transaction.id} className="compact-list-item">
-                  <div>
-                    <strong>{transaction.address}</strong>
-                    <span>{transaction.personName}</span>
-                    <small>{transaction.checklistCount} tasks near deadline</small>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <EmptyWidgetState message="Build Sales > Transactions to monitor active deals here." />
-        )}
-      </DashboardWidget>
-
-      <DashboardWidget title="Today's Tasks" actions={<HelpCircle size={15} />}>
-        {widgetAvailability.tasks ? (
-          <>
-            <div className="task-chip-row">
-              <TaskPill label="Call" value={taskCounts.Call} tint="blue" />
-              <TaskPill label="Text" value={taskCounts.Text} tint="blue-light" />
-              <TaskPill label="Email" value={taskCounts.Email} tint="green" />
-              <TaskPill label="Other" value={taskCounts.Other} tint="orange" />
-            </div>
-            <div className="compact-list">
-              {tasks.map((task) => (
-                <div key={task.id} className="task-list-item">
-                  <div className="task-list-main">
-                    <span className="task-list-icon">{task.type === "Call" ? <Phone size={14} /> : task.type === "Text" ? <MessageSquare size={14} /> : task.type === "Email" ? <Mail size={14} /> : <Circle size={6} fill="currentColor" strokeWidth={0} />}</span>
-                    <div>
-                      <strong>{task.title}</strong>
-                      <span>{task.personName}</span>
-                    </div>
-                  </div>
-                  <small>{task.timeLabel}</small>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <EmptyWidgetState message="Build CRM > Tasks to see your daily action list here." />
-        )}
-      </DashboardWidget>
-
-      <DashboardWidget
-        title="Appointments"
-        actions={
-          <div className="widget-tab-switch">
-            <button
-              className={scheduleTab === "appointments" ? "widget-tab-switch-button widget-tab-switch-button--active" : "widget-tab-switch-button"}
-              onClick={() => setScheduleTab("appointments")}
-            >
-              Appointments
-            </button>
-            <button
-              className={scheduleTab === "showings" ? "widget-tab-switch-button widget-tab-switch-button--active" : "widget-tab-switch-button"}
-              onClick={() => setScheduleTab("showings")}
-            >
-              Showings
-            </button>
-          </div>
-        }
-      >
-        {widgetAvailability.appointments ? (
-          <>
-            <div className="dashboard-progress-track">
-              <div className="dashboard-progress-fill dashboard-progress-fill--green" style={{ width: `${Math.min((scheduleIncomplete / Math.max(scheduleTotal, 1)) * 100, 100)}%` }} />
-            </div>
-            <p className="widget-summary">
-              Total: {scheduleTotal} ({scheduleIncomplete} incomplete)
-            </p>
-            <div className="compact-list">
-              {scheduleItems.map((item) => (
-                <div key={item.id} className="compact-list-item">
-                  <div>
-                    <strong>{item.personName}</strong>
-                    <span>{item.timeLabel}</span>
-                    <small>{item.title}</small>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <EmptyWidgetState message="Build Calendar or Showing tools to see meetings here." />
-        )}
-      </DashboardWidget>
-
-      <DashboardWidget title="Listings">
-        {widgetAvailability.listings ? (
-          listings.length ? (
-            <div className="compact-list">
-              {listings.map((listing) => (
-                <div key={listing.id} className="compact-list-item">
-                  <div>
-                    <strong>{listing.address}</strong>
-                    <span>{formatListingLocation(listing)}</span>
-                    <small>{listing.trend}</small>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyWidgetState message="No enabled listings yet. Open Content > Listings to configure MLS feeds or pocket listings for your website." />
-          )
-        ) : (
-          <EmptyWidgetState message="Build Content > Listings to bring property activity into the dashboard." />
-        )}
-      </DashboardWidget>
-
-      <DashboardWidget title="Hot Sheets">
-        {widgetAvailability.hotSheets ? (
-          <div className="compact-list">
-            {hotSheets.map((sheet) => (
-              <div key={sheet.id} className="compact-list-item compact-list-item--split">
-                <strong>{sheet.label}</strong>
-                <span className="listing-count-badge">+{sheet.count} Listings</span>
+                <small>{listing.trend}</small>
               </div>
             ))}
           </div>
-        ) : (
-          <EmptyWidgetState message="Build Content > Websites to surface listing watchlists here." />
-        )}
-      </DashboardWidget>
+          <div className="workflow-background-stack">
+            {hotSheetPreview.map((sheet) => (
+              <div key={sheet.id} className="workflow-background-row workflow-background-row--compact">
+                <strong>{sheet.label}</strong>
+                <span className="listing-count-badge">+{sheet.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    },
+    {
+      id: "updates",
+      title: "Updates",
+      summary: "Passive product and service notes that can wait until the core work is done.",
+      content: (
+        <div className="workflow-background-list">
+          {updates.map((update) => (
+            <div key={update.id} className="workflow-background-row">
+              <div>
+                <strong>{update.title}</strong>
+                <span>{update.description}</span>
+              </div>
+              <span className={`dashboard-accent-dot dashboard-accent-dot--${update.accent}`} />
+            </div>
+          ))}
+        </div>
+      )
+    }
+  ];
+
+  return (
+    <div className="workflow-dashboard">
+      <div className="workflow-top-summary">
+        <WorkflowMetric
+          label="Overdue"
+          value={visibleTodayFlow.filter((task) => task.dueState === "overdue" && !completedSet.has(task.id)).length}
+          tone="amber"
+        />
+        <WorkflowMetric
+          label="Due today"
+          value={visibleTodayFlow.filter((task) => !completedSet.has(task.id)).length}
+          tone="blue"
+        />
+        <WorkflowMetric label="Do soon" value={mustDoSoon.length} tone="green" />
+      </div>
+
+      <div className="workflow-layout">
+        <main className="workflow-main-column">
+          <section className="workflow-primary-card workflow-next-best">
+            <div className="workflow-section-head">
+              <div>
+                <h3>Next Best Action</h3>
+                <p>One recommended move, with enough context to start immediately.</p>
+              </div>
+              {nextBestAction ? (
+                <DashboardStatusPill label={nextBestAction.statusLabel} tone={nextBestAction.statusTone} />
+              ) : null}
+            </div>
+
+            {nextBestAction ? (
+              <>
+                <div className={`workflow-next-best-body workflow-next-best-body--${nextBestAction.dueState}`}>
+                  <div className="workflow-next-best-title">
+                    <strong>{nextBestAction.title}</strong>
+                    <span>{nextBestAction.personName} · {nextBestAction.context}</span>
+                  </div>
+                  <p>{nextBestAction.reason}</p>
+                </div>
+                <div className="workflow-next-best-actions">
+                  <div className="workflow-action-buttons">
+                    <button className="workflow-primary-button" onClick={() => setExpandedTaskId(nextBestAction.id)}>
+                      Start
+                    </button>
+                    <button className="workflow-secondary-button" onClick={() => handleCompleteTask(nextBestAction.id)}>
+                      Complete
+                    </button>
+                    <button className="workflow-secondary-button" onClick={() => handleDeferTask(nextBestAction.id)}>
+                      Snooze
+                    </button>
+                    <button className="workflow-ghost-button" onClick={() => handleDeferTask(nextBestAction.id)}>
+                      Skip
+                    </button>
+                  </div>
+                  <div className="workflow-quick-channel-row">
+                    <span>{nextBestAction.timeLabel} · {nextBestAction.durationLabel} · {nextBestAction.contactLine}</span>
+                    <div className="workflow-quick-icons">
+                      <button aria-label="Call task"><Phone size={15} /></button>
+                      <button aria-label="Text task"><MessageSquare size={15} /></button>
+                      <button aria-label="Email task"><Mail size={15} /></button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <EmptyWidgetState message="There is nothing left in today’s flow right now. Promote something from Must Do Soon or check the background panels." />
+            )}
+          </section>
+
+          <section className="workflow-primary-card">
+            <div className="workflow-section-head workflow-section-head--tight">
+              <div>
+                <h3>Today&apos;s Flow</h3>
+                <p>Work top to bottom. Open one task, act, then move to the next.</p>
+              </div>
+              <div className="workflow-flow-stats">
+                <span>{visibleTodayFlow.filter((task) => !completedSet.has(task.id)).length} active</span>
+                <span>{visibleTodayFlow.filter((task) => task.isScheduledEvent && !completedSet.has(task.id)).length} appointments first</span>
+                <span>{completedTaskIds.length} done</span>
+              </div>
+            </div>
+
+            <div className="workflow-flow-list">
+              {visibleTodayFlow.length ? (
+                visibleTodayFlow.map((task, index) => (
+                  <WorkflowTaskRow
+                    key={task.id}
+                    index={index}
+                    task={task}
+                    isCompleted={completedSet.has(task.id)}
+                    isExpanded={expandedTaskId === task.id}
+                    isCurrent={task.id === nextBestAction?.id}
+                    onToggle={() => setExpandedTaskId((current) => (current === task.id ? null : task.id))}
+                    onStart={() => setExpandedTaskId(task.id)}
+                    onComplete={() => handleCompleteTask(task.id)}
+                    onDefer={() => handleDeferTask(task.id)}
+                  />
+                ))
+              ) : (
+                <div className="workflow-empty-inline">
+                  <Check size={16} />
+                  <span>You cleared today&apos;s flow. Pull in a task from Must Do Soon if you want to keep going.</span>
+                </div>
+              )}
+            </div>
+          </section>
+        </main>
+
+        <aside className="workflow-side-column">
+          <section className="workflow-secondary-card">
+            <div className="workflow-section-head workflow-section-head--tight">
+              <div>
+                <h3>{scheduleTab === "appointments" ? "Appointments" : "Showings"}</h3>
+                <p>Upcoming meetings stay nearby, ordered by the time they happen.</p>
+              </div>
+            </div>
+            <div className="workflow-background-tabs">
+              <button
+                className={scheduleTab === "appointments" ? "workflow-background-tab is-active" : "workflow-background-tab"}
+                onClick={() => setScheduleTab("appointments")}
+              >
+                Appointments
+              </button>
+              <button
+                className={scheduleTab === "showings" ? "workflow-background-tab is-active" : "workflow-background-tab"}
+                onClick={() => setScheduleTab("showings")}
+              >
+                Showings
+              </button>
+            </div>
+            <div className="workflow-background-list">
+              {sortedScheduleItems.slice(0, 4).map((item) => (
+                <div key={item.id} className="workflow-background-row">
+                  <div>
+                    <strong>{item.personName}</strong>
+                    <span>{item.title}</span>
+                  </div>
+                  <div className="workflow-background-row-side">
+                    {item.incomplete ? <DashboardStatusPill label="Prep" tone="watch" /> : null}
+                    <small>{item.timeLabel}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="workflow-secondary-card">
+            <div className="workflow-section-head workflow-section-head--tight">
+              <div>
+                <h3>Must Do Soon</h3>
+                <p>Important work that should stay nearby, but not on top of today’s queue.</p>
+              </div>
+            </div>
+            <div className="workflow-soon-list">
+              {mustDoSoon.length ? (
+                mustDoSoon.map((item) => (
+                  <div key={item.id} className="workflow-soon-row">
+                    <div>
+                      <strong>{item.title}</strong>
+                      <span>{item.subtitle}</span>
+                      <small>{item.reason}</small>
+                    </div>
+                    <div className="workflow-soon-actions">
+                      <small>{item.dueLabel}</small>
+                      {!item.id.startsWith("deferred-") ? (
+                        <button className="workflow-promote-button" onClick={() => handlePromoteSoon(item.id)}>
+                          Promote
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <EmptyWidgetState message="Nothing is waiting in the soon lane right now." />
+              )}
+            </div>
+          </section>
+
+          {backgroundPanels.map((panel, index) => (
+            <details key={panel.id} className="workflow-secondary-card workflow-background-panel" open={index < 2}>
+              <summary className="workflow-background-summary">
+                <div>
+                  <strong>{panel.title}</strong>
+                  <span>{panel.summary}</span>
+                </div>
+                <ChevronDown size={16} />
+              </summary>
+              <div className="workflow-background-content">{panel.content}</div>
+            </details>
+          ))}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowTaskRow({
+  task,
+  isCompleted,
+  index,
+  isExpanded,
+  isCurrent,
+  onToggle,
+  onStart,
+  onComplete,
+  onDefer
+}: {
+  task: DashboardWorkflowTask;
+  isCompleted: boolean;
+  index: number;
+  isExpanded: boolean;
+  isCurrent: boolean;
+  onToggle: () => void;
+  onStart: () => void;
+  onComplete: () => void;
+  onDefer: () => void;
+}) {
+  return (
+    <article className={`workflow-task ${isExpanded ? "is-expanded" : ""} ${isCurrent ? "is-current" : ""} ${task.dueState === "overdue" ? "is-urgent" : ""} ${isCompleted ? "is-complete" : ""}`.trim()}>
+      <button className="workflow-task-summary" onClick={onToggle}>
+        <div className="workflow-task-order">{index + 1}</div>
+        <div className="workflow-task-main">
+          <div className="workflow-task-line">
+            <strong>{task.title}</strong>
+            {isCompleted ? <DashboardStatusPill label="Completed" tone="success" /> : <DashboardStatusPill label={task.statusLabel} tone={task.statusTone} />}
+          </div>
+          <span>{task.personName} · {task.context}</span>
+          <div className="workflow-task-meta">
+            <small>{task.dueLabel}</small>
+            <small>{task.timeLabel}</small>
+            <small>{task.durationLabel}</small>
+            {task.appointmentLabel ? <small>{task.appointmentLabel}</small> : null}
+          </div>
+        </div>
+        <div className="workflow-task-side">
+          <small>{isCompleted ? "Done" : task.dueState === "overdue" ? "Do now" : "Up next"}</small>
+          <ChevronDown size={16} className={isExpanded ? "is-open" : ""} />
+        </div>
+      </button>
+
+      {isExpanded && !isCompleted ? (
+        <div className="workflow-task-detail">
+          <div className="workflow-task-detail-grid">
+            <div className="workflow-task-detail-block">
+              <span className="workflow-detail-label">Context</span>
+              <p>{task.detailSummary}</p>
+              <div className="workflow-chip-row">
+                <span>{task.interestedListing}</span>
+                <span>{task.contactLine}</span>
+                {task.transactionStatus ? <span>{task.transactionStatus}</span> : null}
+              </div>
+            </div>
+            <div className="workflow-task-detail-block">
+              <span className="workflow-detail-label">Suggested script</span>
+              <p>{task.suggestedScript}</p>
+              <small>{task.nextStep}</small>
+            </div>
+          </div>
+
+          <div className="workflow-task-actionbar">
+            <div className="workflow-inline-actions">
+              <button className="workflow-inline-button" onClick={onStart}>
+                {task.taskType === "Call" ? <Phone size={15} /> : task.taskType === "Text" ? <MessageSquare size={15} /> : task.taskType === "Email" ? <Mail size={15} /> : <ArrowRight size={15} />}
+                {task.taskType}
+              </button>
+              <button className="workflow-inline-button" onClick={onStart}>
+                <MessageSquare size={15} />
+                Note
+              </button>
+              <button className="workflow-inline-button" onClick={onStart}>
+                <Mail size={15} />
+                Follow-up
+              </button>
+            </div>
+            <div className="workflow-inline-actions">
+              <button className="workflow-secondary-button" onClick={onDefer}>
+                Snooze
+              </button>
+              <button className="workflow-primary-button" onClick={onComplete}>
+                Mark Complete
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function WorkflowMetric({
+  label,
+  value,
+  tone
+}: {
+  label: string;
+  value: number;
+  tone: "amber" | "red" | "blue" | "green";
+}) {
+  return (
+    <div className={`workflow-metric workflow-metric--${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
@@ -3000,11 +3476,13 @@ function SubfeatureWorkspace({
 
 function DashboardWidget({
   title,
+  summary,
   actions,
   children,
   className = ""
 }: {
   title: string;
+  summary?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -3012,12 +3490,69 @@ function DashboardWidget({
   return (
     <article className={`dashboard-widget ${className}`.trim()}>
       <div className="dashboard-widget-header">
-        <h2>{title}</h2>
+        <div className="dashboard-widget-title-group">
+          <h2>{title}</h2>
+          {summary ? <p>{summary}</p> : null}
+        </div>
         {actions ? <div className="dashboard-widget-actions">{actions}</div> : null}
       </div>
       {children}
     </article>
   );
+}
+
+function DashboardStatTile({
+  label,
+  value,
+  tone
+}: {
+  label: string;
+  value: number;
+  tone: "urgent" | "action" | "watch";
+}) {
+  return (
+    <div className={`dashboard-stat-tile dashboard-stat-tile--${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function DashboardPriorityRow({
+  label,
+  title,
+  meta,
+  action,
+  tone
+}: {
+  label: string;
+  title: string;
+  meta: string;
+  action: string;
+  tone: "urgent" | "action" | "watch";
+}) {
+  return (
+    <div className={`dashboard-priority-row dashboard-priority-row--${tone}`}>
+      <div className="dashboard-priority-main">
+        <DashboardStatusPill label={label} tone={tone} />
+        <div>
+          <strong>{title}</strong>
+          <span>{meta}</span>
+        </div>
+      </div>
+      <small>{action}</small>
+    </div>
+  );
+}
+
+function DashboardStatusPill({
+  label,
+  tone
+}: {
+  label: string;
+  tone: "urgent" | "action" | "watch" | "success" | "neutral";
+}) {
+  return <span className={`dashboard-status-pill dashboard-status-pill--${tone}`}>{label}</span>;
 }
 
 function WidgetMetric({ label, value }: { label: string; value: number }) {
