@@ -8,6 +8,7 @@ coverage/
 *.tsbuildinfo
 .env.local
 .env*.local
+.env
 
 vite.config.js
 vite.config.d.ts
