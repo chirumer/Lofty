@@ -108,11 +108,11 @@ export const roleDefinitions: RoleDefinition[] = [
     id: "company-owner",
     name: "Company Owner",
     summary: "Runs the full Lofty account and makes the top-level setup decisions.",
-    whatYouSee: "You will see every setup card, every shared workflow, and owner-level controls.",
+    whatYouSee: "You will see every setup tab, every shared workflow, and owner-level controls.",
     setupFocus: "Company profile, sales workflows, websites, automation, reporting, integrations, and add-ons.",
     icon: Building2,
     accessSummary: [
-      "Full access to all cards and most controls.",
+      "Full access to all tabs and most controls.",
       "Can manage company-wide websites, reporting, permissions, and add-ons.",
       "Can launch shared operational templates across the company."
     ]
@@ -121,7 +121,7 @@ export const roleDefinitions: RoleDefinition[] = [
     id: "company-admin",
     name: "Company Admin",
     summary: "Operates the company day to day without owner-only financial control.",
-    whatYouSee: "You will see almost all setup cards, with only owner-only controls separated out.",
+    whatYouSee: "You will see almost all setup tabs, with only owner-only controls separated out.",
     setupFocus: "Company operations, communication, routing, reporting, and team-wide tools.",
     icon: BriefcaseBusiness,
     accessSummary: [
@@ -134,7 +134,7 @@ export const roleDefinitions: RoleDefinition[] = [
     id: "office-owner",
     name: "Office / Team Owner",
     summary: "Launches Lofty for one office or team and manages the shared workflow.",
-    whatYouSee: "You will see the setup cards needed to run an office or team, not company-wide ownership controls.",
+    whatYouSee: "You will see the setup tabs needed to run an office or team, not company-wide ownership controls.",
     setupFocus: "Office CRM, sales workflows, content, automation, communication, and reporting.",
     icon: Building,
     accessSummary: [
@@ -147,7 +147,7 @@ export const roleDefinitions: RoleDefinition[] = [
     id: "office-admin",
     name: "Office / Team Admin",
     summary: "Supports one office or team with shared setup and operational help.",
-    whatYouSee: "You will see most office setup cards, but some owner and add-on controls stay limited.",
+    whatYouSee: "You will see most office setup tabs, but some owner and add-on controls stay limited.",
     setupFocus: "Shared workflows, content basics, communication, templates, reporting, and support tasks.",
     icon: House,
     accessSummary: [
@@ -160,12 +160,12 @@ export const roleDefinitions: RoleDefinition[] = [
     id: "agent-user",
     name: "Agent / User",
     summary: "Uses Lofty for personal CRM, website, follow-up, and daily production.",
-    whatYouSee: "You will see the cards needed for your own pipeline, website, communication, and reporting.",
+    whatYouSee: "You will see the tabs needed for your own pipeline, website, communication, and reporting.",
     setupFocus: "Personal CRM, sales, content, automation, AI, and day-to-day production.",
     icon: UserRound,
     accessSummary: [
       "Personal production access focused on daily work.",
-      "Can launch the cards needed for an individual real estate workflow.",
+      "Can launch the tabs needed for an individual real estate workflow.",
       "Admin-only controls remain hidden or locked."
     ]
   },
@@ -173,7 +173,7 @@ export const roleDefinitions: RoleDefinition[] = [
     id: "lender",
     name: "Lender",
     summary: "Collaborates on shared leads with limited, lender-safe access.",
-    whatYouSee: "You will only see collaboration-safe cards and lender-relevant subfeatures.",
+    whatYouSee: "You will only see collaboration-safe tabs and lender-relevant subfeatures.",
     setupFocus: "Shared leads, shared tasks, transaction collaboration, and lender-safe AI help.",
     icon: Landmark,
     accessSummary: [
@@ -236,7 +236,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
           selectField("taskDefaultType", "Default task type", ["Call", "Text", "Email", "Other"], "Set the task type your team uses most.", "Call"),
           selectField("taskReminderCadence", "Reminder cadence", ["Same day", "Next day", "Weekly"], "Choose how task reminders should behave.", "Same day")
         ],
-        "Turns on the core to-do workflow for this card.",
+        "Turns on the core to-do workflow for this tab.",
         "This keeps relationship work from slipping through the cracks.",
         "Task workflows only appear where the role can own or collaborate on follow-up."
       ),
@@ -263,9 +263,9 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
     allowedRoles: allRoles,
     requiredFor: allRoles,
     icon: Target,
-    whatItDoes: "Brings active buying and selling steps into one working card.",
+    whatItDoes: "Brings active buying and selling steps into one working tab.",
     whyItMatters: "This is how interest turns into offers, showings, and real transactions.",
-    tip: "Keep this card simple for launch, then add more detail later.",
+    tip: "Keep this tab simple for launch, then add more detail later.",
     lockExplanation: "Sales is available to all roles, but some deal controls stay limited for lenders.",
     subfeatures: [
       subfeature(
@@ -320,7 +320,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
     requiredFor: [],
     icon: Megaphone,
     whatItDoes: "Handles email, texting, outreach, and top-of-funnel demand generation.",
-    whyItMatters: "This card helps create demand instead of only reacting to incoming activity.",
+    whyItMatters: "This tab helps create demand instead of only reacting to incoming activity.",
     tip: "If you want a lighter launch, build this after CRM and Sales.",
     lockExplanation: "Marketing is for operational and agent roles. Lenders do not get the full marketing suite.",
     subfeatures: [
@@ -431,7 +431,7 @@ export const libraryCardDefinitions: LibraryCardDefinition[] = [
     icon: Building,
     whatItDoes: "Builds the website, landing pages, and event-ready content experiences.",
     whyItMatters: "This is where the public-facing side of the platform gets built.",
-    tip: "If you only build one public-facing card early on, make it this one.",
+    tip: "If you only build one public-facing tab early on, make it this one.",
     lockExplanation: "Content setup is for the roles that own websites and lead capture surfaces.",
     subfeatures: [
       subfeature(
@@ -845,14 +845,14 @@ export const presetDefinitions: PresetDefinition[] = [
   {
     id: "new-agent-setup",
     name: "New Agent Setup",
-    description: "Focuses on the core cards an agent needs first.",
+    description: "Focuses on the core tabs an agent needs first.",
     roleIds: ["agent-user"],
     recommendedCards: ["crm", "sales", "content", "automation"]
   },
   {
     id: "team-owner-setup",
     name: "Team Owner Setup",
-    description: "Covers the core operational cards for a team launch.",
+    description: "Covers the core operational tabs for a team launch.",
     roleIds: ["office-owner"],
     recommendedCards: ["crm", "sales", "content", "automation", "reporting"]
   },
@@ -866,21 +866,21 @@ export const presetDefinitions: PresetDefinition[] = [
   {
     id: "lender-setup",
     name: "Lender Setup",
-    description: "Focuses only on collaboration-safe cards.",
+    description: "Focuses only on collaboration-safe tabs.",
     roleIds: ["lender"],
     recommendedCards: ["crm", "sales", "ai-copilots"]
   },
   {
     id: "advanced-marketing-setup",
     name: "Advanced Marketing Setup",
-    description: "Adds the public-facing and growth cards first.",
+    description: "Adds the public-facing and growth tabs first.",
     roleIds: ["company-owner", "company-admin", "office-owner", "office-admin", "agent-user"],
     recommendedCards: ["content", "marketing", "automation", "ai-copilots"]
   },
   {
     id: "minimal-launch-setup",
     name: "Minimal Launch Setup",
-    description: "Keeps launch tight with only the minimum required cards.",
+    description: "Keeps launch tight with only the minimum required tabs.",
     roleIds: allRoles,
     recommendedCards: ["crm", "sales", "content"]
   }

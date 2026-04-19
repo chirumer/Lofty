@@ -19,9 +19,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   AlertCircle,
   ArrowRight,
-  ArrowUpRight,
   Check,
-  GripVertical,
   Layers3,
   Lock,
   Rocket,
@@ -443,11 +441,7 @@ function App() {
       snapshot={snapshot}
       query={cardQuery}
       onQueryChange={setCardQuery}
-      onSelectCard={(cardId) => {
-        setSelectedCardId(cardId);
-        setSelectedSubfeatureId(null);
-      }}
-      onOpenCard={activateCard}
+      onSelectCard={activateCard}
       selectedCardId={selectedCardId}
     />
   );
@@ -468,14 +462,14 @@ function App() {
               <span>{selectedRole.name}</span>
               <strong>{launchProgress}% launch progress</strong>
               <p>
-                {accessibleCards.filter((card) => snapshot.cardStates[card.id] === "built").length} built cards,{" "}
-                {requiredCardsRemaining.length} required cards still open.
+                {accessibleCards.filter((card) => snapshot.cardStates[card.id] === "built").length} built tabs,{" "}
+                {requiredCardsRemaining.length} required tabs still open.
               </p>
             </div>
             <div className="overview-card">
               <div className="overview-card-title">
                 <h2>Recommended path</h2>
-                <p>These cards are the best place to start for this role.</p>
+                <p>These tabs are the best place to start for this role.</p>
               </div>
               <div className="chip-wrap">
                 {recommendedCards.map((card) => (
@@ -541,8 +535,8 @@ function App() {
               <div className="mobile-drawer" onClick={(event) => event.stopPropagation()}>
                 <div className="mobile-drawer-header">
                   <div>
-                    <h3>Library Cards</h3>
-                    <p>Tap a card to preview it or open it in the workspace.</p>
+                    <h3>Library Tabs</h3>
+                    <p>Tap a tab to preview it or open it in the workspace.</p>
                   </div>
                   <button className="icon-button" onClick={() => setMobileLibraryOpen(false)}>
                     <X size={16} />
@@ -571,8 +565,8 @@ function App() {
 
           {showLaunchConfirm ? (
             <ModalFrame
-              title="Launch with optional cards still open?"
-              subtitle="You have built the required cards. Optional cards can still be added later."
+              title="Launch with optional tabs still open?"
+              subtitle="You have built the required tabs. Optional tabs can still be added later."
               onClose={() => setShowLaunchConfirm(false)}
             >
               <div className="confirm-stack">
@@ -673,7 +667,6 @@ function LibraryPanel({
   query,
   onQueryChange,
   onSelectCard,
-  onOpenCard,
   selectedCardId
 }: {
   cards: LibraryCardDefinition[];
@@ -682,7 +675,6 @@ function LibraryPanel({
   query: string;
   onQueryChange: (value: string) => void;
   onSelectCard: (cardId: LibraryCardId) => void;
-  onOpenCard: (cardId: LibraryCardId) => void;
   selectedCardId: LibraryCardId | null;
 }) {
   return (
@@ -690,7 +682,7 @@ function LibraryPanel({
       <div className="panel-header">
         <div>
           <h2>Layer Library</h2>
-          <p>These are the only eight setup cards in the builder. Drag one into the workspace to configure it.</p>
+          <p>These are the only eight setup tabs in the builder. Drag one into the workspace to configure it.</p>
         </div>
       </div>
 
@@ -700,7 +692,7 @@ function LibraryPanel({
           <input
             type="text"
             value={query}
-            placeholder="Search cards or subfeatures"
+            placeholder="Search tabs or subfeatures"
             onChange={(event) => onQueryChange(event.target.value)}
           />
         </label>
@@ -715,7 +707,6 @@ function LibraryPanel({
             status={snapshot.cardStates[card.id] ?? "not-started"}
             selected={selectedCardId === card.id}
             onSelect={() => onSelectCard(card.id)}
-            onOpen={() => onOpenCard(card.id)}
           />
         ))}
       </div>
@@ -728,15 +719,13 @@ function LibraryCard({
   roleId,
   status,
   selected,
-  onSelect,
-  onOpen
+  onSelect
 }: {
   card: LibraryCardDefinition;
   roleId: RoleId;
   status: CardState;
   selected: boolean;
   onSelect: () => void;
-  onOpen: () => void;
 }) {
   const available = card.allowedRoles.includes(roleId);
   const Icon = card.icon;
@@ -744,6 +733,7 @@ function LibraryCard({
     id: `library:${card.id}`,
     disabled: !available
   });
+  const draggableProps = available ? { ...attributes, ...listeners } : {};
 
   const statusLabel =
     status === "built" ? "Built" : status === "draft" ? "Draft" : status === "not-started" ? "Not started" : status;
@@ -751,8 +741,9 @@ function LibraryCard({
   return (
     <div
       ref={setNodeRef}
-      className={`library-layer-card ${selected ? "library-layer-card--selected" : ""} ${!available ? "library-layer-card--locked" : ""}`}
+      className={`library-layer-card ${selected ? "library-layer-card--selected" : ""} ${!available ? "library-layer-card--locked" : ""} ${available ? "library-layer-card--draggable" : ""}`}
       style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.6 : 1 }}
+      {...draggableProps}
     >
       <div className="library-tab-bar">
         <button className="library-layer-main" onClick={onSelect}>
@@ -765,28 +756,12 @@ function LibraryCard({
         </button>
 
         <div className="library-tab-actions">
-          <span className={`status-dot status-dot--${status === "draft" ? "in-progress" : status}`} />
-          {available ? (
-            <button className="icon-button drag-handle" aria-label={`Drag ${card.label}`} {...listeners} {...attributes}>
-              <GripVertical size={16} />
-            </button>
-          ) : (
+          {!available ? (
             <button className="icon-button" onClick={onSelect} aria-label={`Why ${card.label} is locked`}>
               <Lock size={14} />
             </button>
-          )}
-          <button
-            className={`icon-button library-open-button ${available ? "library-open-button--primary" : ""}`}
-            onClick={available ? onOpen : onSelect}
-            aria-label={available ? `Open ${card.label}` : `Why ${card.label} is locked`}
-          >
-            <ArrowUpRight size={16} />
-          </button>
+          ) : null}
         </div>
-      </div>
-
-      <div className="library-tab-body">
-        <p>{card.description}</p>
       </div>
 
       <div className="library-layer-meta">
@@ -816,8 +791,8 @@ function EmptyWorkspace() {
   return (
     <div className="empty-workspace">
       <Layers3 size={28} />
-      <h3>Drag a card here to start</h3>
-      <p>Choose a card from the library. Your website will be built one card at a time.</p>
+      <h3>Drag a tab here to start</h3>
+      <p>Choose a tab from the library. Your website will be built one tab at a time.</p>
     </div>
   );
 }
@@ -851,7 +826,7 @@ function ActiveCard({
     <article className="active-card">
       <div className="active-card-header">
         <div>
-          <p className="section-kicker">Active card</p>
+          <p className="section-kicker">Active tab</p>
           <div className="active-card-title-row">
             <span className="active-card-icon">
               <Icon size={18} />
@@ -940,12 +915,12 @@ function ActiveCard({
             {readiness.ready ? (
               <>
                 <Check size={14} />
-                This card is ready to build.
+                This tab is ready to build.
               </>
             ) : (
               <>
                 <AlertCircle size={14} />
-                Enable the required subfeatures and complete their prompts before building this card.
+                Enable the required subfeatures and complete their prompts before building this tab.
               </>
             )}
           </div>
@@ -984,7 +959,7 @@ function LaunchSummary({
         <div className="panel-header">
           <div>
             <h2>Launch</h2>
-            <p>Build the required cards, then create the website.</p>
+            <p>Build the required tabs, then create the website.</p>
           </div>
         </div>
         <div className="launch-stats">
@@ -1011,7 +986,7 @@ function LaunchSummary({
         ) : (
           <div className="info-tip">
             <Check size={14} />
-            <span>The required cards are built. You can launch now.</span>
+            <span>The required tabs are built. You can launch now.</span>
           </div>
         )}
         <button className="launch-button" disabled={!snapshot.launchReady} onClick={onLaunch}>
@@ -1041,7 +1016,7 @@ function SubfeaturePromptModal({
   return (
     <ModalFrame
       title={`Turn on ${subfeature.name}`}
-      subtitle={`${subfeature.setupSummary} Add the minimum information below to enable it inside ${card.label}.`}
+      subtitle={`${subfeature.setupSummary} Add the minimum information below to enable it inside ${card.label} tab.`}
       onClose={onCancel}
     >
       <div className="prompt-stack">
@@ -1217,7 +1192,7 @@ function LaunchSuccessScreen({
             <p>
               {activeCardGroup
                 ? `${activeCardGroup.card.label} is live with the subfeatures you enabled during setup.`
-                : `The required cards are built, and ${role.name.toLowerCase()} users can now work inside the setup you assembled.`}
+                : `The required tabs are built, and ${role.name.toLowerCase()} users can now work inside the setup you assembled.`}
             </p>
             <div className="success-actions launched-stage-actions">
               <button className="secondary-button launched-reset-button" onClick={onReset}>
@@ -1265,7 +1240,7 @@ function LaunchSuccessScreen({
                 </span>
               ))
             ) : (
-              <span className="muted-copy">No optional cards are left.</span>
+              <span className="muted-copy">No optional tabs are left.</span>
             )}
           </div>
         </article>
